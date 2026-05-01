@@ -1,5 +1,6 @@
 package com.hermes.agent.agent;
 
+import com.hermes.agent.tool.ToolSetManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +46,9 @@ class SimpleAgentTest {
     @Mock
     private AssistantMessage assistantMessage;
 
+    @Mock
+    private ToolSetManager toolSetManager;
+
     private SimpleAgent agent;
 
     @BeforeEach
@@ -58,11 +62,17 @@ class SimpleAgentTest {
         when(callSpec.chatResponse()).thenReturn(chatResponse);
         when(chatResponse.getResult()).thenReturn(generation);
         when(generation.getOutput()).thenReturn(assistantMessage);
+        when(toolSetManager.getActiveToolSetNames()).thenReturn(List.of("test"));
+        when(toolSetManager.getActiveToolBeans(any())).thenAnswer(invocation -> {
+            List<Object> beans = invocation.getArgument(0);
+            return beans;
+        });
     }
 
     private void createAgent(Object... tools) {
         agent = new SimpleAgent(
                 chatClientBuilder,
+                toolSetManager,
                 List.of(tools),
                 "You are a helpful assistant."
         );

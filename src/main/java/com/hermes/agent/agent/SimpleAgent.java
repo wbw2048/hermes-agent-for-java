@@ -1,5 +1,6 @@
 package com.hermes.agent.agent;
 
+import com.hermes.agent.tool.ToolSetManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -39,20 +40,22 @@ public class SimpleAgent {
      * 创建智能体实例。
      *
      * @param chatClientBuilder   Spring AI ChatClient 构建器
-     * @param toolObjects         所有带有 @Tool 注解方法的 Spring Bean（由 Spring 自动注入）
+     * @param toolSetManager      工具集管理器，负责按配置过滤工具 Bean
      * @param defaultSystemPrompt 系统提示词，每次请求都会注入
      */
     public SimpleAgent(
             ChatClient.Builder chatClientBuilder,
-            List<Object> toolObjects,
+            ToolSetManager toolSetManager,
+            List<Object> allToolBeans,
             @Value("${hermes.agent.default-system-prompt:你是一个有帮助的AI助手。请用中文回答问题。}")
             String defaultSystemPrompt
     ) {
         this.defaultSystemPrompt = defaultSystemPrompt;
         this.chatClient = chatClientBuilder.build();
-        this.toolObjects = filterToolBeans(toolObjects);
-        log.info("SimpleAgent initialized with {} tool beans: {}",
-                this.toolObjects.length, getAvailableTools());
+        List<Object> activeBeans = toolSetManager.getActiveToolBeans(allToolBeans);
+        this.toolObjects = filterToolBeans(activeBeans);
+        log.info("SimpleAgent initialized with {} tool beans (toolsets={}): {}",
+                this.toolObjects.length, toolSetManager.getActiveToolSetNames(), getAvailableTools());
     }
 
     /**

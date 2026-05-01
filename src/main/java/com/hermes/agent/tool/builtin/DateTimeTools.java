@@ -2,6 +2,7 @@ package com.hermes.agent.tool.builtin;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.hermes.agent.tool.annotation.ToolSet;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import java.time.format.DateTimeFormatter;
  * 支持指定时区和日期格式，默认使用系统时区和 ISO-8601 格式。
  */
 @Service
+@ToolSet("datetime")
 public class DateTimeTools {
 
     private static final Logger log = LoggerFactory.getLogger(DateTimeTools.class);

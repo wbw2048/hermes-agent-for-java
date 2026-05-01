@@ -1,12 +1,15 @@
 package com.hermes.agent;
 
+import com.hermes.agent.config.ToolSetProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 /**
  * Hermes Agent Spring Boot 应用入口。
  */
 @SpringBootApplication
+@EnableConfigurationProperties(ToolSetProperties.class)
 public class HermesAgentApplication {
 
     public static void main(String[] args) {
