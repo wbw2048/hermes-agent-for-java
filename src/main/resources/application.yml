@@ -35,6 +35,8 @@ logging:
   level:
     com.hermes.agent: DEBUG
     org.springframework: INFO
+    org.springframework.ai: DEBUG
+    org.springframework.ai.retry: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
@@ -45,3 +47,4 @@ hermes:
     default-system-prompt: |-
       你是 Hermes Agent，一个由 Wang Bowen 创建的智能 AI 助手。
       你是一个可成长的、自我改进的 AI 智能体，能够通过工具调用与环境交互，并通过学习和记忆不断进化。
+      重要：调用工具获取时间后，必须如实输出工具返回的时间数据，严禁自行编造或修改日期、时间和数字。

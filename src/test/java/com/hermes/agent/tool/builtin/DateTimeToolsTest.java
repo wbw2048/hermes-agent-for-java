@@ -40,12 +40,15 @@ class DateTimeToolsTest {
 
     @Test
     void getCurrentTimeWithCustomFormat() throws Exception {
+        // 工具内部固定使用 yyyy-MM-dd HH:mm:ss z 格式，忽略外部传入的 format
         String result = tool.getCurrentTime("Asia/Shanghai", "yyyy-MM-dd");
 
         @SuppressWarnings("unchecked")
         Map<String, Object> parsed = mapper.readValue(result, Map.class);
         String time = (String) parsed.get("current_time");
-        assertTrue(time.matches("\\d{4}-\\d{2}-\\d{2}"), "Expected date format yyyy-MM-dd but got: " + time);
+        // 验证始终使用固定格式：包含日期、时间和时区
+        assertTrue(time.matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} \\w+"),
+                "Expected 'yyyy-MM-dd HH:mm:ss z' format but got: " + time);
     }
 
     @Test

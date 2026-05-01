@@ -78,10 +78,17 @@ public class SimpleAgent {
      * @return 工具调用完成后助手的最终回复
      */
     public String runConversation(String sessionId, String userMessage) {
-        log.debug("Running conversation: sessionId={}, message={}", sessionId, userMessage);
+        log.info(">>> [LLM-REQUEST] sessionId={}", sessionId);
 
         List<Message> messages = sessionMessages.computeIfAbsent(sessionId, k -> new ArrayList<>());
         messages.add(new UserMessage(userMessage));
+
+        log.info(">>> [LLM-MESSAGES] sessionId={}, total messages in history={}", sessionId, messages.size());
+        for (int i = 0; i < messages.size(); i++) {
+            Message m = messages.get(i);
+            log.info("  [{}] type={} text={}", i, m.getMessageType(), m.getText());
+        }
+        log.info(">>> [LLM-SYSTEM] {}", defaultSystemPrompt.replaceAll("\\n", "\\\\n"));
 
         try {
             var chatResponse = chatClient.prompt()
@@ -93,10 +100,15 @@ public class SimpleAgent {
 
             var assistantMsg = chatResponse.getResult().getOutput();
             String content = assistantMsg.getText();
+
+            log.info(">>> [LLM-RESPONSE] sessionId={}, responseText={}", sessionId, content != null ? content.replaceAll("\\n", "\\\\n") : "(null)");
+            log.info(">>> [LLM-RESPONSE-DETAILS] messageType={}, toolCalls={}",
+                    assistantMsg.getMessageType(), assistantMsg.getToolCalls());
+
             messages.add(assistantMsg);
             return content != null ? content : "";
         } catch (Exception e) {
-            log.error("Error in conversation: {}", e.getMessage(), e);
+            log.error(">>> [LLM-ERROR] sessionId={}: {}", sessionId, e.getMessage(), e);
             return "抱歉，处理您的请求时出现了错误: " + e.getMessage();
         }
     }
