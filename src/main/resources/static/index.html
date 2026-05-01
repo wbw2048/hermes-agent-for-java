@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hermes Agent - AI智能体</title>
+    <!-- Markdown 渲染 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -174,6 +176,21 @@
             gap: 0.8rem;
         }
 
+        .action-btn {
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 0.3rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        .action-btn:hover { background: rgba(255,255,255,0.25); }
+        .action-btn.hidden { display: none; }
+
         .current-session-info {
             font-size: 0.8rem;
             opacity: 0.85;
@@ -231,8 +248,195 @@
         .message-header {
             font-size: 0.75rem;
             opacity: 0.8;
+            margin-bottom: 0.3rem;
+        }
+
+        /* Markdown 内容样式 */
+        .message-content pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            margin: 0.5rem 0;
+        }
+
+        .message-content code {
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+            font-size: 0.85em;
+        }
+
+        .message-content p { margin: 0.4rem 0; }
+        .message-content ul, .message-content ol {
+            padding-left: 1.2rem;
+            margin: 0.3rem 0;
+        }
+        .message-content blockquote {
+            border-left: 3px solid #667eea;
+            padding-left: 0.8rem;
+            margin: 0.3rem 0;
+            color: #666;
+        }
+        .message-content h1, .message-content h2, .message-content h3, .message-content h4 {
+            margin: 0.6rem 0 0.3rem 0;
+            font-weight: 600;
+        }
+        .message-content h1 { font-size: 1.2rem; }
+        .message-content h2 { font-size: 1.1rem; }
+        .message-content h3 { font-size: 1rem; }
+        .message-content h4 { font-size: 0.95rem; }
+        .message-content a {
+            color: #667eea;
+            text-decoration: underline;
+        }
+        .message-content hr {
+            border: none;
+            border-top: 1px solid #ddd;
+            margin: 0.8rem 0;
+        }
+        .message-content table {
+            border-collapse: collapse;
+            margin: 0.5rem 0;
+            font-size: 0.9rem;
+        }
+        .message-content th, .message-content td {
+            border: 1px solid #ddd;
+            padding: 0.4rem 0.6rem;
+        }
+        .message-content th {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+
+        /* ── 工具调用卡片 ── */
+        .tool-call-card {
+            align-self: flex-start;
+            max-width: 80%;
+            width: 100%;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
+            overflow: hidden;
+            background: #fafafa;
+        }
+
+        .tool-call-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 0.8rem;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.15s;
+            user-select: none;
+        }
+
+        .tool-call-header:hover {
+            background: #f0f0f0;
+        }
+
+        .tool-call-chevron {
+            font-size: 0.7rem;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .tool-call-chevron.open {
+            transform: rotate(90deg);
+        }
+
+        .tool-call-icon {
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .tool-call-name {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .tool-call-args {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.75rem;
+            color: #888;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .tool-call-status {
+            flex-shrink: 0;
+            font-size: 0.85rem;
+        }
+
+        .tool-call-elapsed {
+            font-size: 0.7rem;
+            color: #999;
+            font-family: monospace;
+            flex-shrink: 0;
+        }
+
+        .tool-call-body {
+            display: none;
+            border-top: 1px solid #e0e0e0;
+            padding: 0.6rem 0.8rem;
+            font-size: 0.8rem;
+        }
+
+        .tool-call-body.open {
+            display: block;
+        }
+
+        .tool-call-section {
+            margin-bottom: 0.5rem;
+        }
+
+        .tool-call-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .tool-call-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #999;
             margin-bottom: 0.2rem;
         }
+
+        .tool-call-value {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.75rem;
+            color: #555;
+            white-space: pre-wrap;
+            word-break: break-all;
+            background: #f5f5f5;
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .tool-call-value.error {
+            color: #d32f2f;
+            background: #fef2f2;
+        }
+
+        /* 工具调用状态颜色 */
+        .tool-call-card.status-done {
+            border-color: #c8e6c9;
+            background: #f9fbe7;
+        }
+        .tool-call-card.status-done .tool-call-status { color: #2e7d32; }
+
+        .tool-call-card.status-error {
+            border-color: #ffcdd2;
+            background: #fff3e0;
+        }
+        .tool-call-card.status-error .tool-call-status { color: #d32f2f; }
 
         .input-area {
             padding: 1rem 1.5rem;
@@ -391,6 +595,31 @@
 
         .modal-btn.cancel { background: #e9ecef; color: #333; }
         .modal-btn.confirm { background: #667eea; color: white; }
+        .modal-btn.danger { background: #d32f2f; color: white; }
+
+        /* 人设弹窗样式 */
+        .modal-wide { width: 560px; max-width: 95vw; }
+        .persona-hint { font-size: 0.8rem; color: #888; margin: 0.5rem 0 0.8rem; }
+        #personaContent {
+            width: 100%;
+            min-height: 180px;
+            padding: 0.8rem;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            line-height: 1.5;
+            resize: vertical;
+            outline: none;
+        }
+        #personaContent:focus { border-color: #667eea; }
+        .persona-status {
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+            min-height: 1.2em;
+        }
+        .persona-status.error { color: #d32f2f; }
+        .persona-status.ok { color: #2e7d32; }
     </style>
 </head>
 <body>
@@ -402,7 +631,7 @@
                 <button class="new-session-btn" id="newSessionBtn">+ 新建会话</button>
             </div>
             <div class="session-list" id="sessionList">
-                <!-- 会话列表项动态生成 -->
+                <!-- 会话列表动态生成 -->
             </div>
         </div>
 
@@ -411,6 +640,9 @@
             <div class="header">
                 <h1>Hermes Agent</h1>
                 <div class="header-right">
+                    <button class="action-btn hidden" id="compressBtn" title="上下文压缩">&#x1F5DC; 压缩</button>
+                    <button class="action-btn hidden" id="clearHistoryBtn" title="清除历史">&#x1F9F9; 清空</button>
+                    <button class="action-btn" id="settingsBtn" title="人设设置">&#x2699; 设置</button>
                     <span class="current-session-info" id="currentSessionInfo"></span>
                     <span class="status" id="connectionStatus">连接中...</span>
                 </div>
@@ -454,6 +686,21 @@
         </div>
     </div>
 
+    <!-- 人设设置弹窗 -->
+    <div class="modal-overlay" id="personaModal">
+        <div class="modal modal-wide">
+            <h3>AI 人设（SOUL.md）</h3>
+            <p class="persona-hint">定义 AI 智能体的身份、沟通风格和行为准则。内容将在每次对话时注入系统提示。</p>
+            <textarea id="personaContent" placeholder="例如：你是资深 Java 工程师，擅长代码审查，回复要简洁直接..."></textarea>
+            <div class="persona-status" id="personaStatus"></div>
+            <div class="modal-actions">
+                <button class="modal-btn cancel" id="personaResetBtn">恢复默认</button>
+                <button class="modal-btn cancel" id="personaCancelBtn">取消</button>
+                <button class="modal-btn confirm" id="personaSaveBtn">保存</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = '/api/conversations';
         let currentSessionId = null;
@@ -468,11 +715,28 @@
         const sessionList = document.getElementById('sessionList');
         const currentSessionInfo = document.getElementById('currentSessionInfo');
         const newSessionBtn = document.getElementById('newSessionBtn');
+        const compressBtn = document.getElementById('compressBtn');
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
         const titleModal = document.getElementById('titleModal');
         const titleInput = document.getElementById('titleInput');
         const titleCancelBtn = document.getElementById('titleCancelBtn');
         const titleConfirmBtn = document.getElementById('titleConfirmBtn');
+        const settingsBtn = document.getElementById('settingsBtn');
+        const personaModal = document.getElementById('personaModal');
+        const personaContent = document.getElementById('personaContent');
+        const personaStatus = document.getElementById('personaStatus');
+        const personaSaveBtn = document.getElementById('personaSaveBtn');
+        const personaCancelBtn = document.getElementById('personaCancelBtn');
+        const personaResetBtn = document.getElementById('personaResetBtn');
         let editingSessionId = null;
+
+        // Marked.js 配置
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({
+                breaks: true,
+                gfm: true
+            });
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             checkHealth();
@@ -488,7 +752,6 @@
                     connectionStatus.style.background = '#4CAF50';
                     sendButton.disabled = false;
                     await loadSessions();
-                    // 如果有会话，选中第一个；否则创建新会话
                     if (sessionsCache.length > 0) {
                         selectSession(sessionsCache[0].id);
                     } else {
@@ -516,6 +779,8 @@
                 sendButton.disabled = messageInput.value.trim() === '';
             });
             newSessionBtn.addEventListener('click', createNewSession);
+            compressBtn.addEventListener('click', handleCompress);
+            clearHistoryBtn.addEventListener('click', handleClearHistory);
 
             // 弹窗
             titleCancelBtn.addEventListener('click', closeTitleModal);
@@ -526,6 +791,18 @@
             });
             titleModal.addEventListener('click', (e) => {
                 if (e.target === titleModal) closeTitleModal();
+            });
+
+            // 人设弹窗
+            settingsBtn.addEventListener('click', openPersonaModal);
+            personaCancelBtn.addEventListener('click', closePersonaModal);
+            personaResetBtn.addEventListener('click', handlePersonaReset);
+            personaSaveBtn.addEventListener('click', handlePersonaSave);
+            personaContent.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closePersonaModal();
+            });
+            personaModal.addEventListener('click', (e) => {
+                if (e.target === personaModal) closePersonaModal();
             });
         }
 
@@ -555,8 +832,8 @@
                         <div class="session-time">${formatTime(s.updatedAt)}</div>
                     </div>
                     <div class="session-actions">
-                        <button class="session-action-btn rename-btn" data-id="${s.id}" title="重命名">✏️</button>
-                        <button class="session-action-btn delete-btn" data-id="${s.id}" title="删除">🗑️</button>
+                        <button class="session-action-btn rename-btn" data-id="${s.id}" title="重命名">&#x270F;</button>
+                        <button class="session-action-btn delete-btn" data-id="${s.id}" title="删除">&#x1F5D1;</button>
                     </div>
                 `;
                 div.querySelector('.session-info').addEventListener('click', () => selectSession(s.id));
@@ -574,7 +851,24 @@
             }
         }
 
-        function createNewSession() {
+        async function createNewSession() {
+            try {
+                const r = await fetch(`${API_BASE}/session`, { method: 'POST' });
+                if (r.ok) {
+                    const session = await r.json();
+                    currentSessionId = session.id;
+                    chatContainer.innerHTML = '';
+                    addMessageToChat('system', '新会话已创建');
+                    updateSessionInfo();
+                    updateActionButtons();
+                    await loadSessions();
+                    messageInput.focus();
+                    return;
+                }
+            } catch (e) {
+                console.error('Create session failed:', e);
+            }
+            // 降级方案：前端生成 ID
             currentSessionId = generateSessionId();
             chatContainer.innerHTML = '';
             addMessageToChat('system', '新会话已创建');
@@ -586,8 +880,8 @@
         async function selectSession(id) {
             currentSessionId = id;
             chatContainer.innerHTML = '';
-            addMessageToChat('system', '正在加载历史...');
             updateSessionInfo();
+            updateActionButtons();
             renderSessionList();
 
             try {
@@ -602,6 +896,9 @@
                             const role = m.messageType ? m.messageType.toLowerCase() : 'system';
                             if (role === 'user' || role === 'assistant') {
                                 addMessageToChat(role, m.text || '');
+                            } else if (role === 'tool') {
+                                // 历史中的工具消息以系统消息展示
+                                addMessageToChat('system', '[工具] ' + (m.text || ''));
                             }
                         }
                     }
@@ -655,7 +952,6 @@
                     body: JSON.stringify({ title })
                 });
                 if (r.ok) {
-                    // 更新缓存
                     const sess = sessionsCache.find(s => s.id === editingSessionId);
                     if (sess) sess.title = title;
                     renderSessionList();
@@ -667,6 +963,91 @@
             closeTitleModal();
         }
 
+        // ── 人设设置 ──
+
+        async function openPersonaModal() {
+            personaModal.classList.add('visible');
+            personaStatus.textContent = '';
+            personaStatus.className = 'persona-status';
+            personaContent.value = '(加载中...)';
+            personaContent.disabled = true;
+            try {
+                const r = await fetch('/api/settings/persona');
+                if (r.ok) {
+                    const data = await r.json();
+                    personaContent.value = data.content || '';
+                } else {
+                    personaContent.value = '';
+                }
+            } catch (e) {
+                personaContent.value = '';
+                personaStatus.textContent = '加载失败: ' + e.message;
+                personaStatus.className = 'persona-status error';
+            }
+            personaContent.disabled = false;
+            setTimeout(() => personaContent.focus(), 100);
+        }
+
+        function closePersonaModal() {
+            personaModal.classList.remove('visible');
+        }
+
+        async function handlePersonaSave() {
+            const content = personaContent.value;
+            if (!content.trim()) {
+                personaStatus.textContent = '人设内容不能为空';
+                personaStatus.className = 'persona-status error';
+                return;
+            }
+            personaSaveBtn.disabled = true;
+            personaStatus.textContent = '保存中...';
+            personaStatus.className = 'persona-status';
+            try {
+                const r = await fetch('/api/settings/persona', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                const data = await r.json();
+                if (r.ok && data.success) {
+                    personaStatus.textContent = data.message || '已保存';
+                    personaStatus.className = 'persona-status ok';
+                    setTimeout(closePersonaModal, 800);
+                } else {
+                    personaStatus.textContent = data.message || '保存失败';
+                    personaStatus.className = 'persona-status error';
+                }
+            } catch (e) {
+                personaStatus.textContent = '保存失败: ' + e.message;
+                personaStatus.className = 'persona-status error';
+            } finally {
+                personaSaveBtn.disabled = false;
+            }
+        }
+
+        async function handlePersonaReset() {
+            if (!confirm('确定删除人设文件，恢复默认身份？')) return;
+            personaSaveBtn.disabled = true;
+            try {
+                const r = await fetch('/api/settings/persona', { method: 'DELETE' });
+                const data = await r.json();
+                if (r.ok && data.success) {
+                    personaContent.value = '';
+                    personaStatus.textContent = data.message || '已恢复默认';
+                    personaStatus.className = 'persona-status ok';
+                    setTimeout(closePersonaModal, 800);
+                } else {
+                    personaStatus.textContent = data.message || '重置失败';
+                    personaStatus.className = 'persona-status error';
+                }
+            } catch (e) {
+                personaStatus.textContent = '重置失败: ' + e.message;
+                personaStatus.className = 'persona-status error';
+            } finally {
+                personaSaveBtn.disabled = false;
+            }
+        }
+
         function updateSessionInfo() {
             const sess = sessionsCache.find(s => s.id === currentSessionId);
             if (sess) {
@@ -676,7 +1057,45 @@
             }
         }
 
-        // ── 发送消息 ──
+        function updateActionButtons() {
+            // 有当前会话时才显示操作按钮
+            const hasSession = currentSessionId != null && sessionsCache.length > 0;
+            compressBtn.classList.toggle('hidden', !hasSession);
+            clearHistoryBtn.classList.toggle('hidden', !hasSession);
+        }
+
+        // ── 压缩 & 清空历史 ──
+
+        async function handleCompress() {
+            if (!currentSessionId) return;
+            try {
+                const r = await fetch(`${API_BASE}/${currentSessionId}/compress`, { method: 'POST' });
+                if (r.ok) {
+                    const data = await r.json();
+                    addMessageToChat('system', `上下文压缩完成：${data.messagesBefore} → ${data.messagesAfter} 条消息（删除 ${data.messagesRemoved} 条）`);
+                } else {
+                    addMessageToChat('system', '压缩失败，会话不存在');
+                }
+            } catch (e) {
+                addMessageToChat('system', '压缩请求失败: ' + e.message);
+            }
+        }
+
+        async function handleClearHistory() {
+            if (!currentSessionId) return;
+            if (!confirm('确定清除此会话的全部历史消息？')) return;
+            try {
+                const r = await fetch(`${API_BASE}/${currentSessionId}/history`, { method: 'DELETE' });
+                if (r.ok) {
+                    chatContainer.innerHTML = '';
+                    addMessageToChat('system', '历史消息已清除');
+                }
+            } catch (e) {
+                addMessageToChat('system', '清除历史失败: ' + e.message);
+            }
+        }
+
+        // ── 发送消息（流式） ──
 
         async function sendMessage() {
             const message = messageInput.value.trim();
@@ -687,26 +1106,97 @@
             addMessageToChat('user', message);
             showTypingIndicator();
 
+            // 创建助手消息气泡（流式渲染用）
+            const assistantDiv = document.createElement('div');
+            assistantDiv.className = 'message assistant-message';
+            const header = document.createElement('div');
+            header.className = 'message-header';
+            header.textContent = '助手';
+            const body = document.createElement('div');
+            body.className = 'message-content';
+            assistantDiv.appendChild(header);
+            assistantDiv.appendChild(body);
+            chatContainer.appendChild(assistantDiv);
+
+            let textBuffer = '';
+
+            function handleSSEEvent(eventType, data) {
+                if (eventType === 'tool') {
+                    const tc = JSON.parse(data);
+                    addToolCallCard(tc);
+                } else if (eventType === 'text') {
+                    textBuffer += data;
+                    if (typeof marked !== 'undefined') {
+                        body.innerHTML = marked.parse(textBuffer);
+                    } else {
+                        body.textContent = textBuffer;
+                    }
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                } else if (eventType === 'done') {
+                    hideTypingIndicator();
+                } else if (eventType === 'error') {
+                    hideTypingIndicator();
+                    addMessageToChat('system', `错误: ${data}`);
+                }
+            }
+
             try {
-                const r = await fetch(API_BASE, {
+                const response = await fetch(`${API_BASE}/stream`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message, sessionId: currentSessionId })
                 });
-                const data = await r.json();
-                hideTypingIndicator();
 
-                if (data.success) {
-                    addMessageToChat('assistant', data.message);
-                    // 刷新会话列表（更新 updatedAt）
-                    await loadSessions();
-                } else {
-                    addMessageToChat('system', `错误: ${data.error}`);
+                if (!response.ok) {
+                    hideTypingIndicator();
+                    addMessageToChat('system', `错误: HTTP ${response.status}`);
+                    return;
                 }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let rawBuffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    rawBuffer += decoder.decode(value, { stream: true });
+                    // SSE 事件以空行分隔
+                    const parts = rawBuffer.split('\n\n');
+                    rawBuffer = parts.pop(); // 保留未完成的片段
+
+                    for (const part of parts) {
+                        const lines = part.split('\n');
+                        let eventType = 'message'; // SSE 默认事件类型
+                        let dataLines = [];
+
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (!trimmed || trimmed.startsWith(':')) continue;
+
+                            if (trimmed.startsWith('event:')) {
+                                eventType = trimmed.slice(6).trim();
+                            } else if (trimmed.startsWith('data:')) {
+                                dataLines.push(trimmed.slice(5));
+                            }
+                        }
+
+                        if (dataLines.length > 0) {
+                            const data = dataLines.join('\n');
+                            handleSSEEvent(eventType, data);
+                        }
+                    }
+                }
+
             } catch (e) {
                 hideTypingIndicator();
                 addMessageToChat('system', `网络错误: ${e.message}`);
+                return;
             }
+
+            hideTypingIndicator();
+            await loadSessions();
             messageInput.focus();
         }
 
@@ -720,10 +1210,55 @@
             header.textContent = role === 'user' ? '用户' : role === 'assistant' ? '助手' : '系统';
             const body = document.createElement('div');
             body.className = 'message-content';
-            body.textContent = content;
+
+            if (role === 'assistant' && typeof marked !== 'undefined') {
+                body.innerHTML = marked.parse(content);
+            } else {
+                body.textContent = content;
+            }
+
             div.appendChild(header);
             div.appendChild(body);
             chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function addToolCallCard(tc) {
+            const card = document.createElement('div');
+            const statusClass = tc.error ? 'status-error' : 'status-done';
+            card.className = `tool-call-card ${statusClass}`;
+
+            const argsPreview = tc.arguments || '';
+            const resultPreview = tc.result || '(无结果)';
+            const statusIcon = tc.error ? '✗' : '✓';
+            const elapsedStr = formatElapsed(tc.elapsedMs);
+
+            card.innerHTML = `
+                <div class="tool-call-header" onclick="this.nextElementSibling.classList.toggle('open'); this.querySelector('.tool-call-chevron').classList.toggle('open');">
+                    <span class="tool-call-chevron">&#x25B6;</span>
+                    <span class="tool-call-icon">&#x26A1;</span>
+                    <span class="tool-call-name">${escapeHtml(tc.toolName)}</span>
+                    <span class="tool-call-args">${escapeHtml(truncate(argsPreview, 80))}</span>
+                    <span class="tool-call-status">${statusIcon}</span>
+                    <span class="tool-call-elapsed">${elapsedStr}</span>
+                </div>
+                <div class="tool-call-body">
+                    ${tc.arguments ? `<div class="tool-call-section">
+                        <div class="tool-call-label">参数</div>
+                        <div class="tool-call-value">${escapeHtml(tc.arguments)}</div>
+                    </div>` : ''}
+                    ${tc.result ? `<div class="tool-call-section">
+                        <div class="tool-call-label">结果</div>
+                        <div class="tool-call-value">${escapeHtml(truncate(tc.result, 2000))}</div>
+                    </div>` : ''}
+                    ${tc.error ? `<div class="tool-call-section">
+                        <div class="tool-call-label">错误</div>
+                        <div class="tool-call-value error">${escapeHtml(tc.error)}</div>
+                    </div>` : ''}
+                </div>
+            `;
+
+            chatContainer.appendChild(card);
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
@@ -751,10 +1286,21 @@
             return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         }
 
+        function formatElapsed(ms) {
+            if (!ms || ms === 0) return '';
+            if (ms < 1000) return ms + 'ms';
+            return (ms / 1000).toFixed(1) + 's';
+        }
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function truncate(str, maxLen) {
+            if (!str) return '';
+            return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
         }
     </script>
 </body>

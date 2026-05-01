@@ -179,3 +179,4 @@ kube/
 hermes-agent-java-implementation-plan.md
 CLAUDE.md
 docs
+.playwright-cli

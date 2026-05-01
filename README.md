@@ -193,18 +193,7 @@ ENTRYPOINT ["java", "-jar", "/app.jar"]
 3. 编写文档和测试
 4. 提出架构改进建议
 
-## 许可证
-
-本项目基于 MIT 许可证开源。
-
 ## 致谢
 
 - [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) - 原版 Python 项目
 - Spring 团队 - 优秀的 Java 框架
-- OpenAI - 提供 AI 模型 API
-
----
-
-**版本**: 0.1.0-SNAPSHOT  
-**状态**: 开发中 (阶段1+2完成)  
-**最后更新**: 2026-04-30

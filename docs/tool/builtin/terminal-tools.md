@@ -20,7 +20,7 @@ public class TerminalTools {
 | 限制类型 | 实现 |
 |---------|------|
 | 超时保护 | 默认 60s，可通过 `hermes.tools.terminal.timeout-seconds` 配置 |
-| 危险命令拦截 | 匹配 `rm -rf /`, `mkfs`, `dd`, `fdisk`, fork bomb 等模式 |
+| 危险命令拦截 | 匹配 `rm -rf /`, `mkfs`, `dd`, `fdisk`, fork bomb, `wget http`, `curl http` 等模式 |
 | 进程隔离 | 每个命令独立进程执行，不保持会话状态 |
 
 ## 返回格式

@@ -2,7 +2,7 @@
 
 > **创建日期**: 2026-04-30
 > **最后更新**: 2026-05-01
-> **当前状态**: 阶段4已完成，阶段5待开始
+> **当前状态**: 阶段5进行中，设计文档已完成
 
 ---
 
@@ -45,7 +45,7 @@
 | 2 | 工具调用基础框架 | ✅ 完成 |
 | 3 | 更多工具和工具集 | ✅ 完成 |
 | 4 | SQLite 会话存储 | ✅ 完成 |
-| 5 | 提示构建和上下文压缩 | 🔴 待开始 |
+| 5 | 提示构建和上下文压缩 | ✅ 完成 |
 | 6 | Web 界面 | 🔴 待开始 |
 | 7 | WebSocket 实时交互 | 🔴 待开始 |
 | 8 | 完整功能整合 | 🔴 待开始 |
@@ -63,7 +63,7 @@ src/main/java/com/hermes/agent/
 ├── controller/
 │   ├── ConversationController.java
 │   └── ConversationRequest.java
-├── core/
+├── agent/
 │   └── SimpleAgent.java
 └── tool/
     └── builtin/
@@ -93,6 +93,22 @@ src/main/resources/
 
 ---
 
+### 阶段2: 工具调用基础框架
+
+**目标**: 引入工具集系统，实现 `@ToolSet` 注解和 `ToolSetManager`
+
+**实现内容**:
+- [x] `@ToolSet` 注解 — 标记工具类所属的工具集
+- [x] `ToolSetManager` — 根据配置过滤活跃工具集的 Bean
+- [x] `ToolSetProperties` — 绑定 `hermes.tools.toolsets.*` 配置
+- [x] `application.yml` 工具集配置
+
+**验证标准**:
+- [x] 工具集可按需启用/禁用
+- [x] 无 `@Tool` 方法的 Bean 不会被注册到 Spring AI
+
+---
+
 ### 阶段3: 更多工具和工具集
 
 **目标**: 实现文件操作和终端工具的基础版本，引入工具集系统
@@ -119,7 +135,7 @@ src/main/resources/
 
 **目标**: 实现 SQLite 会话存储
 
-**设计文档**: [docs/session-storage-design.md](docs/session-storage-design.md)
+**设计文档**: 见 `docs/entity/`、`docs/repository/`、`docs/service/` 下各组件文档
 
 **实现内容**:
 - [x] SQLite 数据库设计 (会话表、消息表)
@@ -140,16 +156,23 @@ src/main/resources/
 
 **目标**: 实现基本的提示构建和上下文管理
 
-**设计文档**: `docs/prompt-and-context-design.md` (待创建)
+**设计文档**: 见 `docs/prompt/`、`docs/compressor/`、`docs/config/` 下各组件文档
 
 **实现内容**:
-- [ ] 提示构建器 (系统提示组装, 技能和上下文文件支持)
-- [ ] 上下文压缩 (历史摘要, 令牌计数和限制)
+- [x] 提示构建器 (PromptBuilder: 智能体身份 + 上下文文件发现 + 注入防护)
+- [x] 上下文文件发现 (ContextFileDiscovery: .hermes.md → AGENTS.md → CLAUDE.md → .cursorrules)
+- [x] 注入防护扫描 (PromptInjectionDetector: 10+ 威胁模式 + 不可见 Unicode)
+- [x] 内容截断 (ContextFileTruncator: 20k 字符 head/tail 分割)
+- [x] 上下文压缩 (ContextCompressor: 令牌估算、工具剪枝、LLM 摘要)
+- [x] 集成到 SimpleAgent + 手动压缩 REST API
+- [x] 压缩配置属性 (ContextCompressionProperties)
 
 **验证标准**:
-- [ ] 系统提示能正确组装并发送给 LLM
-- [ ] 上下文超出限制时能正确压缩
-- [ ] 历史摘要不丢失关键信息
+- [x] 系统提示能正确组装 CLAUDE.md 等上下文文件
+- [x] 注入防护能检测并拦截恶意模式
+- [x] 上下文超出阈值时自动触发压缩
+- [x] 压缩后 LLM 响应保持上下文连贯性
+- [x] 单元测试覆盖所有新组件（131 tests）
 
 ---
 

@@ -47,6 +47,13 @@ hermes:
     default-system-prompt: |-
       你是 Hermes Agent，一个由 Wang Bowen 创建的智能 AI 助手。
       你是一个可成长的、自我改进的 AI 智能体，能够通过工具调用与环境交互，并通过学习和记忆不断进化。
+    context-compression:
+      enabled: true
+      threshold-percent: 0.75
+      protect-first-n: 3
+      protect-last-n: 6
+      tail-token-budget: 20000
+      context-length: 128000
   tools:
     toolsets:
       active:

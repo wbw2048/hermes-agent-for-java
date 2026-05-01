@@ -1,6 +1,7 @@
 package com.hermes.agent.controller;
 
 import com.hermes.agent.agent.SimpleAgent;
+import com.hermes.agent.controller.ToolCallTracker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.Message;
@@ -28,6 +29,7 @@ class ConversationControllerTest {
     @BeforeEach
     void setUp() {
         agent = mock(SimpleAgent.class);
+        when(agent.getToolCallTracker()).thenReturn(new ToolCallTracker());
         mockMvc = MockMvcBuilders.standaloneSetup(new ConversationController(agent)).build();
     }
 

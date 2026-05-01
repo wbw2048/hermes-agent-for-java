@@ -314,6 +314,41 @@ TOTAL=$((TOTAL + 1))
 echo ""
 
 # ──────────────────────────────────────────
+# 8. 上下文压缩（阶段5新增）
+# ──────────────────────────────────────────
+echo -e "${YELLOW}[TC-14] 手动触发上下文压缩${NC}"
+COMPRESS_SESSION="compress-test-$$"
+# 先发送几轮对话产生上下文
+curl -s -X POST "$BASE_URL/api/conversations" \
+  -H "Content-Type: application/json" \
+  -d "{\"message\": \"这是压缩测试的第一条消息\", \"sessionId\": \"$COMPRESS_SESSION\"}" > /dev/null
+sleep 1
+curl -s -X POST "$BASE_URL/api/conversations" \
+  -H "Content-Type: application/json" \
+  -d "{\"message\": \"这是压缩测试的第二条消息\", \"sessionId\": \"$COMPRESS_SESSION\"}" > /dev/null
+sleep 1
+# 触发手动压缩
+COMPRESS_RESP=$(curl -s -X POST "$BASE_URL/api/conversations/$COMPRESS_SESSION/compress")
+TOTAL=$((TOTAL + 1))
+if echo "$COMPRESS_RESP" | grep -q '"success".*true\|"messagesBefore"'; then
+    echo -e "  ${GREEN}PASS${NC} 压缩端点返回成功"
+    PASS=$((PASS + 1))
+else
+    echo -e "  ${RED}FAIL${NC} 压缩端点响应异常"
+    echo "    Actual: $COMPRESS_RESP"
+    FAIL=$((FAIL + 1))
+fi
+echo ""
+
+echo -e "${YELLOW}[TC-15] 系统提示配置${NC}"
+# 验证默认系统提示能通过 POST 请求正常返回
+RESP=$(curl -s -X POST "$BASE_URL/api/conversations" \
+  -H "Content-Type: application/json" \
+  -d "{\"message\": \"请简单回复\", \"sessionId\": \"context-test-$$\"}")
+assert_json_field "返回 success" "$RESP" "success" "true"
+echo ""
+
+# ──────────────────────────────────────────
 # 汇总
 # ──────────────────────────────────────────
 echo "========================================="
@@ -323,7 +358,7 @@ echo -e " ${RED}失败: $FAIL${NC}"
 echo "========================================="
 
 # 清理测试 session
-for sid in "$TOOL_SESSION" "$MEMORY_SESSION" "$SESSION_A" "$SESSION_B" "$HISTORY_SESSION" "$FILE_SESSION" "$TERM_SESSION" "$DANGER_SESSION" "$DELETE_SESSION" "$TITLE_SESSION"; do
+for sid in "$TOOL_SESSION" "$MEMORY_SESSION" "$SESSION_A" "$SESSION_B" "$HISTORY_SESSION" "$FILE_SESSION" "$TERM_SESSION" "$DANGER_SESSION" "$DELETE_SESSION" "$TITLE_SESSION" "$COMPRESS_SESSION" "context-test-$$"; do
     curl -s -X DELETE "$BASE_URL/api/conversations/$sid" > /dev/null 2>&1 || true
 done
 

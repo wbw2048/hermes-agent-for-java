@@ -17,6 +17,8 @@ public class DateTimeTools {
 }
 ```
 
-- **参数**：`timezone`（可选，IANA 时区名，默认系统时区）、`format`（可选，日期格式，默认 `yyyy-MM-dd HH:mm:ss z`）
+- **参数**：`timezone`（可选，IANA 时区名，默认系统时区）、`format`（可选，日期格式字符串）
 - **返回**：`{"timezone": "...", "current_time": "..."}`
 - **错误**：无效时区返回 `{"error": "Invalid timezone: ..."}`
+- **注意**：`format` 参数当前被忽略，实际始终使用 `yyyy-MM-dd HH:mm:ss z` 格式
+- **日志**：启用 `[TOOL-CALL]` / `[TOOL-RETURN]` 日志记录

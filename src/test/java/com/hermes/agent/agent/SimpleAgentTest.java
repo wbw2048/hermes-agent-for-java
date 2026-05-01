@@ -1,5 +1,11 @@
 package com.hermes.agent.agent;
 
+import com.hermes.agent.compressor.ContextCompressor;
+import com.hermes.agent.compressor.TokenEstimator;
+import com.hermes.agent.compressor.ToolResultPruner;
+import com.hermes.agent.config.ContextCompressionProperties;
+import com.hermes.agent.controller.ToolCallTracker;
+import com.hermes.agent.prompt.PromptBuilder;
 import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.tool.ToolSetManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,11 +87,24 @@ class SimpleAgentTest {
     }
 
     private void createAgent(Object... tools) {
+        PromptBuilder promptBuilder = new PromptBuilder("You are a helpful assistant.");
+        ContextCompressionProperties compressionProps = new ContextCompressionProperties();
+        compressionProps.setEnabled(false); // Disable compression in tests by default
+        TokenEstimator estimator = new TokenEstimator();
+        ToolResultPruner pruner = new ToolResultPruner();
+        ContextCompressor compressor = new ContextCompressor(chatClientBuilder, estimator, pruner, compressionProps);
+        ToolCallTracker toolCallTracker = new ToolCallTracker();
+
         agent = new SimpleAgent(
                 chatClientBuilder,
                 toolSetManager,
                 List.of(tools),
                 sessionStorageService,
+                promptBuilder,
+                compressor,
+                estimator,
+                compressionProps,
+                toolCallTracker,
                 "You are a helpful assistant."
         );
     }

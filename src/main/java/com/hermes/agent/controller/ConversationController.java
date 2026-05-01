@@ -8,6 +8,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.HashMap;
 import java.util.List;
@@ -51,10 +52,13 @@ public class ConversationController {
         try {
             String response = simpleAgent.runConversation(sessionId, request.message());
 
+            List<ToolCallInfo> toolCalls = simpleAgent.getToolCallTracker().getCalls();
+
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
             result.put("message", response);
             result.put("sessionId", sessionId);
+            result.put("toolCalls", toolCalls);
 
             log.info("Conversation completed successfully");
             return ResponseEntity.ok(result);
@@ -78,6 +82,18 @@ public class ConversationController {
     public ResponseEntity<List<SessionEntity>> listSessions() {
         List<SessionEntity> sessions = simpleAgent.getSessionStorageService().listSessions();
         return ResponseEntity.ok(sessions);
+    }
+
+    /**
+     * 创建空会话，返回新会话实体。
+     * POST /api/conversations/session
+     */
+    @PostMapping("/session")
+    public ResponseEntity<SessionEntity> createSession() {
+        String sessionId = UUID.randomUUID().toString();
+        simpleAgent.getSessionStorageService().createSession(sessionId, null);
+        SessionEntity session = simpleAgent.getSessionStorageService().getSession(sessionId);
+        return ResponseEntity.ok(session);
     }
 
     /**
@@ -156,5 +172,57 @@ public class ConversationController {
         response.put("status", "success");
         response.put("message", "会话标题已更新");
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 手动触发上下文压缩。
+     * POST /api/conversations/{sessionId}/compress
+     */
+    @PostMapping("/{sessionId}/compress")
+    public ResponseEntity<Map<String, Object>> compress(@PathVariable String sessionId) {
+        log.info("Manual compression requested for session: {}", sessionId);
+
+        SessionEntity session = simpleAgent.getSessionStorageService().getSession(sessionId);
+        if (session == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        int before = simpleAgent.getConversationHistory(sessionId).size();
+        int after = simpleAgent.compressContext(sessionId);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("sessionId", sessionId);
+        result.put("messagesBefore", before);
+        result.put("messagesAfter", after);
+        result.put("messagesRemoved", before - after);
+
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 流式对话端点，使用 SSE 推送事件。
+     * POST /api/conversations/stream
+     * <p>
+     * 事件类型：
+     * - {@code tool}: 工具调用详情（名称、参数、结果、耗时）
+     * - {@code text}: 文本响应片段（逐 token 推送）
+     * - {@code done}: 流式完成
+     * - {@code error}: 错误信息
+     */
+    @PostMapping("/stream")
+    public SseEmitter streamConversation(@RequestBody ConversationRequest request) {
+        String sessionId = request.sessionId() != null && !request.sessionId().isBlank()
+                ? request.sessionId()
+                : UUID.randomUUID().toString();
+
+        log.info("Received stream request: sessionId={}, messageLength={}", sessionId, request.message().length());
+
+        // 超时设为 5 分钟
+        SseEmitter emitter = new SseEmitter(5 * 60 * 1000L);
+
+        simpleAgent.streamConversation(sessionId, request.message(), emitter);
+
+        return emitter;
     }
 }
