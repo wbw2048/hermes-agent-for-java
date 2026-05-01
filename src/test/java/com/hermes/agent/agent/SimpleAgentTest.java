@@ -1,5 +1,6 @@
 package com.hermes.agent.agent;
 
+import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.tool.ToolSetManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,9 +12,11 @@ import org.mockito.quality.Strictness;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -49,6 +52,9 @@ class SimpleAgentTest {
     @Mock
     private ToolSetManager toolSetManager;
 
+    @Mock
+    private SessionStorageService sessionStorageService;
+
     private SimpleAgent agent;
 
     @BeforeEach
@@ -63,10 +69,15 @@ class SimpleAgentTest {
         when(chatResponse.getResult()).thenReturn(generation);
         when(generation.getOutput()).thenReturn(assistantMessage);
         when(toolSetManager.getActiveToolSetNames()).thenReturn(List.of("test"));
-        when(toolSetManager.getActiveToolBeans(any())).thenAnswer(invocation -> {
-            List<Object> beans = invocation.getArgument(0);
-            return beans;
-        });
+        when(toolSetManager.getActiveToolBeans(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Default sessionStorageService behavior
+        doNothing().when(sessionStorageService).createSession(anyString(), any());
+        when(sessionStorageService.loadSession(anyString())).thenReturn(new ArrayList<>());
+        doNothing().when(sessionStorageService).saveMessages(anyString(), anyList());
+        doNothing().when(sessionStorageService).deleteSession(anyString());
+        when(sessionStorageService.getSession(anyString())).thenReturn(null);
+        when(sessionStorageService.listSessions()).thenReturn(List.of());
     }
 
     private void createAgent(Object... tools) {
@@ -74,6 +85,7 @@ class SimpleAgentTest {
                 chatClientBuilder,
                 toolSetManager,
                 List.of(tools),
+                sessionStorageService,
                 "You are a helpful assistant."
         );
     }
@@ -98,16 +110,22 @@ class SimpleAgentTest {
         when(assistantMessage.getToolCalls()).thenReturn(List.of());
         when(assistantMessage.getText()).thenReturn("Hello!");
 
+        // Simulate history after first conversation
+        when(sessionStorageService.loadSession("session-1"))
+                .thenReturn(new ArrayList<>())
+                .thenReturn(List.of(new UserMessage("Hi"), assistantMessage));
+
         agent.runConversation("session-1", "Hi");
         assertFalse(agent.getConversationHistory("session-1").isEmpty());
 
         agent.clearHistory("session-1");
-        assertTrue(agent.getConversationHistory("session-1").isEmpty());
+        verify(sessionStorageService).deleteSession("session-1");
     }
 
     @Test
     void getConversationHistoryReturnsEmptyForUnknownSession() {
         createAgent();
+        when(sessionStorageService.loadSession("nonexistent")).thenReturn(new ArrayList<>());
         List<Message> history = agent.getConversationHistory("nonexistent");
         assertTrue(history.isEmpty());
     }
@@ -136,12 +154,28 @@ class SimpleAgentTest {
     void runConversationHistoryAccumulatesMessages() {
         createAgent();
         when(assistantMessage.getText()).thenReturn("Reply 1");
+        when(assistantMessage.getToolCalls()).thenReturn(List.of());
+
+        // First call: empty history
+        when(sessionStorageService.loadSession("s1"))
+                .thenReturn(new ArrayList<>())
+                // Second call: 2 messages from first round
+                .thenReturn(List.of(new UserMessage("Message 1"), assistantMessage));
 
         agent.runConversation("s1", "Message 1");
         agent.runConversation("s1", "Message 2");
 
-        List<Message> history = agent.getConversationHistory("s1");
-        assertEquals(4, history.size());
+        verify(sessionStorageService, times(2)).saveMessages(eq("s1"), anyList());
+    }
+
+    @Test
+    void runConversationCreatesSession() {
+        createAgent();
+        when(assistantMessage.getText()).thenReturn("Hi");
+
+        agent.runConversation("new-session", "Hello");
+
+        verify(sessionStorageService).createSession("new-session", null);
     }
 
     // Helper bean with a @Tool annotated method for testing getAvailableTools

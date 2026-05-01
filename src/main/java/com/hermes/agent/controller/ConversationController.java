@@ -1,9 +1,10 @@
 package com.hermes.agent.controller;
 
 import com.hermes.agent.agent.SimpleAgent;
-import org.springframework.ai.chat.messages.Message;
+import com.hermes.agent.entity.SessionEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -16,7 +17,7 @@ import java.util.UUID;
 /**
  * 对话 REST 控制器。
  * <p>
- * 提供发送消息、获取历史、清除会话和健康检查等接口。
+ * 提供发送消息、获取历史、会话管理和健康检查等接口。
  */
 @RestController
 @RequestMapping("/api/conversations")
@@ -70,6 +71,16 @@ public class ConversationController {
     }
 
     /**
+     * 列出所有会话，按更新时间倒序。
+     * GET /api/conversations
+     */
+    @GetMapping
+    public ResponseEntity<List<SessionEntity>> listSessions() {
+        List<SessionEntity> sessions = simpleAgent.getSessionStorageService().listSessions();
+        return ResponseEntity.ok(sessions);
+    }
+
+    /**
      * 健康检查端点，返回服务状态和可用工具列表。
      * GET /api/conversations/health
      */
@@ -103,6 +114,47 @@ public class ConversationController {
         Map<String, String> response = new HashMap<>();
         response.put("status", "success");
         response.put("message", "对话历史已清除");
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 删除整个会话（包括会话元数据）。
+     * DELETE /api/conversations/{sessionId}
+     */
+    @DeleteMapping("/{sessionId}")
+    public ResponseEntity<Map<String, String>> deleteSession(@PathVariable String sessionId) {
+        simpleAgent.getSessionStorageService().deleteSession(sessionId);
+
+        Map<String, String> response = new HashMap<>();
+        response.put("status", "success");
+        response.put("message", "会话已删除");
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 更新会话标题。
+     * POST /api/conversations/{sessionId}/title
+     */
+    @PostMapping("/{sessionId}/title")
+    public ResponseEntity<Map<String, String>> updateTitle(
+            @PathVariable String sessionId,
+            @RequestBody Map<String, String> request
+    ) {
+        String title = request.get("title");
+        if (title == null || title.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "title is required"));
+        }
+
+        SessionEntity session = simpleAgent.getSessionStorageService().getSession(sessionId);
+        if (session == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        simpleAgent.getSessionStorageService().updateSessionTitle(sessionId, title);
+
+        Map<String, String> response = new HashMap<>();
+        response.put("status", "success");
+        response.put("message", "会话标题已更新");
         return ResponseEntity.ok(response);
     }
 }

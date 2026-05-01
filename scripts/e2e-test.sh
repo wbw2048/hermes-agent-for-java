@@ -206,6 +206,58 @@ assert_not_contains "清除后历史为空" "$HISTORY_AFTER" "这是一条测试
 echo ""
 
 # ──────────────────────────────────────────
+# 5.1 会话管理（阶段4新增）
+# ──────────────────────────────────────────
+echo -e "${YELLOW}[TC-9a] 会话列表${NC}"
+LIST_SESSIONS=$(curl -s "$BASE_URL/api/conversations")
+TOTAL=$((TOTAL + 1))
+# Check if it's a JSON array (starts with [)
+if echo "$LIST_SESSIONS" | grep -q '^\['; then
+    echo -e "  ${GREEN}PASS${NC} 返回会话列表（JSON 数组）"
+    PASS=$((PASS + 1))
+else
+    echo -e "  ${RED}FAIL${NC} 未返回 JSON 数组"
+    echo "    Actual: $LIST_SESSIONS"
+    FAIL=$((FAIL + 1))
+fi
+echo ""
+
+echo -e "${YELLOW}[TC-9b] 删除会话${NC}"
+DELETE_SESSION="delete-test-$$"
+curl -s -X POST "$BASE_URL/api/conversations" \
+  -H "Content-Type: application/json" \
+  -d "{\"message\": \"测试删除\", \"sessionId\": \"$DELETE_SESSION\"}" > /dev/null
+DELETE_RESP=$(curl -s -X DELETE "$BASE_URL/api/conversations/$DELETE_SESSION")
+assert_json_field "删除返回成功" "$DELETE_RESP" "status" "success"
+HISTORY_AFTER=$(curl -s "$BASE_URL/api/conversations/$DELETE_SESSION/history")
+# 删除后历史应该为空数组 []
+if [ "$HISTORY_AFTER" = "[]" ]; then
+    echo -e "  ${GREEN}PASS${NC} 删除后历史为空"
+    PASS=$((PASS + 1))
+    TOTAL=$((TOTAL + 1))
+else
+    echo -e "  ${RED}FAIL${NC} 删除后历史不为空"
+    echo "    Actual: $HISTORY_AFTER"
+    FAIL=$((FAIL + 1))
+    TOTAL=$((TOTAL + 1))
+fi
+echo ""
+
+echo -e "${YELLOW}[TC-9c] 更新会话标题${NC}"
+TITLE_SESSION="title-test-$$"
+curl -s -X POST "$BASE_URL/api/conversations" \
+  -H "Content-Type: application/json" \
+  -d "{\"message\": \"测试标题\", \"sessionId\": \"$TITLE_SESSION\"}" > /dev/null
+TITLE_RESP=$(curl -s -X POST "$BASE_URL/api/conversations/$TITLE_SESSION/title" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "E2E Test Title"}')
+assert_json_field "更新标题返回成功" "$TITLE_RESP" "status" "success"
+# 验证列表中包含更新的标题
+LIST_AFTER=$(curl -s "$BASE_URL/api/conversations")
+assert_contains "列表包含更新后的标题" "$LIST_AFTER" "E2E Test Title"
+echo ""
+
+# ──────────────────────────────────────────
 # 6. 文件工具 E2E
 # ──────────────────────────────────────────
 FILE_SESSION="file-test-$$"
@@ -271,8 +323,8 @@ echo -e " ${RED}失败: $FAIL${NC}"
 echo "========================================="
 
 # 清理测试 session
-for sid in "$TOOL_SESSION" "$MEMORY_SESSION" "$SESSION_A" "$SESSION_B" "$HISTORY_SESSION" "$FILE_SESSION" "$TERM_SESSION" "$DANGER_SESSION"; do
-    curl -s -X DELETE "$BASE_URL/api/conversations/$sid/history" > /dev/null 2>&1 || true
+for sid in "$TOOL_SESSION" "$MEMORY_SESSION" "$SESSION_A" "$SESSION_B" "$HISTORY_SESSION" "$FILE_SESSION" "$TERM_SESSION" "$DANGER_SESSION" "$DELETE_SESSION" "$TITLE_SESSION"; do
+    curl -s -X DELETE "$BASE_URL/api/conversations/$sid" > /dev/null 2>&1 || true
 done
 
 if [ "$FAIL" -gt 0 ]; then

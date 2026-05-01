@@ -2,7 +2,7 @@
 
 > **创建日期**: 2026-05-01
 > **最后更新**: 2026-05-01
-> **当前版本**: v4.0 — 阶段3已覆盖（文件工具、终端工具、工具集系统）
+> **当前版本**: v5.0 — 阶段4已覆盖（SQLite 会话存储、会话管理 API）
 
 ---
 
@@ -70,6 +70,14 @@ DASHSCOPE_API_KEY=xxx mvn spring-boot:run
 | TC-8 | 查看历史 | 对话后 GET `/api/conversations/{sessionId}/history` | 返回包含用户消息和助手消息的列表 |
 | TC-9 | 清除历史 | DELETE `/api/conversations/{sessionId}/history` | 返回成功，再次查询历史为空 |
 
+### 5.1 会话管理（阶段4新增）
+
+| 编号 | 场景 | 操作 | 预期结果 |
+|------|------|------|----------|
+| TC-9a | 会话列表 | 对话后 GET `/api/conversations` | 返回会话列表，包含刚创建的会话 ID |
+| TC-9b | 删除会话 | 对话后 DELETE `/api/conversations/{sessionId}` | 返回成功，再次查询历史为空，列表不再包含该会话 |
+| TC-9c | 更新标题 | POST `/api/conversations/{sessionId}/title` 发送 `{"title": "新标题"}` | 返回成功，GET 列表接口中该会话 title 字段已更新 |
+
 ### 6. 文件工具（阶段3新增）
 
 | 编号 | 场景 | 操作 | 预期结果 |
@@ -102,6 +110,7 @@ DASHSCOPE_API_KEY=xxx mvn spring-boot:run
 
 | 版本 | 通过 | 失败 | 跳过 | 日期 |
 |------|------|------|------|------|
+| v5.0 | 27 | 0 | 0 | 2026-05-01 |
 | v4.0 | 22 | 0 | 0 | 2026-05-01 |
 
 ---
