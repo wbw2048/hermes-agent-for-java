@@ -1,4 +1,4 @@
-package com.hermes.agent.core;
+package com.hermes.agent.agent;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

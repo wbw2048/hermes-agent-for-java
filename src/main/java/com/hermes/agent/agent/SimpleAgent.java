@@ -48,11 +48,25 @@ public class SimpleAgent {
             @Value("${hermes.agent.default-system-prompt:你是一个有帮助的AI助手。请用中文回答问题。}")
             String defaultSystemPrompt
     ) {
-        this.toolObjects = toolObjects.toArray();
         this.defaultSystemPrompt = defaultSystemPrompt;
         this.chatClient = chatClientBuilder.build();
+        this.toolObjects = filterToolBeans(toolObjects);
         log.info("SimpleAgent initialized with {} tool beans: {}",
-                toolObjects.size(), getAvailableTools());
+                this.toolObjects.length, getAvailableTools());
+    }
+
+    /**
+     * 过滤出仅包含 @Tool 方法的 Bean，避免向 Spring AI 注册无工具方法的 Bean 导致错误。
+     */
+    private static Object[] filterToolBeans(List<Object> beans) {
+        return beans.stream()
+                .filter(bean -> {
+                    for (Method m : bean.getClass().getDeclaredMethods()) {
+                        if (m.isAnnotationPresent(Tool.class)) return true;
+                    }
+                    return false;
+                })
+                .toArray();
     }
 
     /**

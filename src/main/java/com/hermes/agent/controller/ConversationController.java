@@ -4,6 +4,7 @@ import com.hermes.agent.agent.SimpleAgent;
 import org.springframework.ai.chat.messages.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,7 +27,7 @@ public class ConversationController {
 
     private final SimpleAgent simpleAgent;
 
-    public ConversationController(SimpleAgent simpleAgent) {
+    public ConversationController(@Lazy SimpleAgent simpleAgent) {
         this.simpleAgent = simpleAgent;
     }
 
