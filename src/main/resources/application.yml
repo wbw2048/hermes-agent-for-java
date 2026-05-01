@@ -1,0 +1,47 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: hermes-agent
+
+  main:
+    allow-bean-definition-overriding: true
+
+  # SQLite configuration
+  datasource:
+    url: jdbc:sqlite:${user.home}/.hermes/hermes.db
+    driver-class-name: org.sqlite.JDBC
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.community.dialect.SQLiteDialect
+
+  # Spring AI OpenAI configuration (兼容百炼 DashScope)
+  ai:
+    openai:
+      api-key: ${DASHSCOPE_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
+      chat:
+        options:
+          model: ${AI_MODEL:qwen-plus}
+          temperature: 0.7
+          max-tokens: 2000
+
+logging:
+  level:
+    com.hermes.agent: DEBUG
+    org.springframework: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+hermes:
+  agent:
+    max-iterations: 10
+    session-timeout-minutes: 30
+    default-system-prompt: |-
+      你是 Hermes Agent，一个由 Wang Bowen 创建的智能 AI 助手。
+      你是一个可成长的、自我改进的 AI 智能体，能够通过工具调用与环境交互，并通过学习和记忆不断进化。
