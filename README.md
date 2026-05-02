@@ -28,11 +28,24 @@
 
 ## 快速开始
 
-```bash
-# 设置 API 密钥
-export OPENAI_API_KEY=your_api_key_here
+### 1. 获取 API 密钥
 
-# 运行
+本项目默认使用阿里云**百炼平台**（DashScope）的兼容 OpenAI 接口。
+
+- 前往 [百炼控制台](https://dashscope.console.aliyun.com/) 注册并创建 API Key
+- 将 Key 配置到环境变量或 `.env` 文件中
+
+```bash
+export DASHSCOPE_API_KEY=sk-xxx
+export OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode
+export AI_MODEL=qwen-plus
+```
+
+> 也可使用其他兼容 OpenAI 接口的 API 提供商，修改 `OPENAI_BASE_URL` 即可。
+
+### 2. 运行
+
+```bash
 mvn spring-boot:run
 ```
 
