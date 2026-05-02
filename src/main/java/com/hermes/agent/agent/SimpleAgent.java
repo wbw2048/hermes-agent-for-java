@@ -3,10 +3,13 @@ package com.hermes.agent.agent;
 import com.hermes.agent.compressor.ContextCompressor;
 import com.hermes.agent.compressor.TokenEstimator;
 import com.hermes.agent.config.ContextCompressionProperties;
+import com.hermes.agent.config.MemoryProperties;
 import com.hermes.agent.controller.ToolCallInfo;
 import com.hermes.agent.controller.ToolCallTracker;
 import com.hermes.agent.error.ErrorClassifier;
 import com.hermes.agent.error.ErrorClassifier.ErrorType;
+import com.hermes.agent.memory.MemoryExtractor;
+import com.hermes.agent.memory.MemoryManager;
 import com.hermes.agent.prompt.PromptBuilder;
 import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.tool.ToolSetManager;
@@ -26,6 +29,7 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 /**
@@ -51,6 +55,9 @@ public class SimpleAgent {
     private final ToolCallTracker toolCallTracker;
     private final LlmCallService llmCallService;
     private final ErrorClassifier errorClassifier;
+    private final MemoryManager memoryManager;
+    private final MemoryExtractor memoryExtractor;
+    private final MemoryProperties memoryProperties;
 
     /**
      * 创建智能体实例。
@@ -80,6 +87,9 @@ public class SimpleAgent {
             ToolCallTracker toolCallTracker,
             LlmCallService llmCallService,
             ErrorClassifier errorClassifier,
+            MemoryManager memoryManager,
+            MemoryExtractor memoryExtractor,
+            MemoryProperties memoryProperties,
             @Value("${hermes.agent.default-system-prompt:你是一个有帮助的AI助手。请用中文回答问题。}")
             String defaultSystemPrompt
     ) {
@@ -92,6 +102,9 @@ public class SimpleAgent {
         this.toolCallTracker = toolCallTracker;
         this.llmCallService = llmCallService;
         this.errorClassifier = errorClassifier;
+        this.memoryManager = memoryManager;
+        this.memoryExtractor = memoryExtractor;
+        this.memoryProperties = memoryProperties;
         List<Object> activeBeans = toolSetManager.getActiveToolBeans(allToolBeans);
         this.toolObjects = wrapToolsForTracking(activeBeans);
         log.info("SimpleAgent initialized with {} tool beans (toolsets={}): {}",
@@ -127,6 +140,11 @@ public class SimpleAgent {
         // 确保会话存在
         sessionStorageService.createSession(sessionId, null);
 
+        // 首次请求时初始化记忆系统
+        if (memoryProperties.isEnabled()) {
+            memoryManager.initializeAll(sessionId);
+        }
+
         // 从数据库加载历史
         List<Message> messages = new ArrayList<>(sessionStorageService.loadSession(sessionId));
         boolean isNewSession = messages.isEmpty();
@@ -134,7 +152,7 @@ public class SimpleAgent {
         // 追加用户消息
         messages.add(new UserMessage(userMessage));
 
-        // 构建系统提示
+        // 构建系统提示（包含记忆快照）
         String systemPrompt = promptBuilder.buildSystemPrompt();
         log.info(">>> [LLM-SYSTEM] {}", systemPrompt.replaceAll("\\n", "\\\\n"));
 
@@ -185,6 +203,20 @@ public class SimpleAgent {
                 + "): " + errorClassifier.getUserMessage(errorType);
         } finally {
             toolCallTracker.stopTracking();
+            // 记忆同步和自动提取（异步执行，不阻塞响应）
+            if (memoryProperties.isEnabled()) {
+                final String userMsg = userMessage;
+                final String assistantText = messages.stream()
+                    .filter(m -> m.getMessageType() == MessageType.ASSISTANT)
+                    .map(Message::getText)
+                    .reduce((a, b) -> b)
+                    .orElse("");
+                CompletableFuture.runAsync(() -> {
+                    memoryManager.syncAll(userMsg, assistantText);
+                    memoryManager.queuePrefetchAll(userMsg);
+                    memoryExtractor.extract(userMsg, assistantText);
+                });
+            }
         }
     }
 
@@ -203,6 +235,12 @@ public class SimpleAgent {
         log.info(">>> [STREAM-REQUEST] sessionId={}", sessionId);
 
         sessionStorageService.createSession(sessionId, null);
+
+        // 首次请求时初始化记忆系统
+        if (memoryProperties.isEnabled()) {
+            memoryManager.initializeAll(sessionId);
+        }
+
         List<Message> messages = new ArrayList<>(sessionStorageService.loadSession(sessionId));
         boolean isNewSession = messages.isEmpty();
 
@@ -234,7 +272,9 @@ public class SimpleAgent {
             toolCallTracker.stopTracking();
         }
 
-        // 发送工具调用事件
+        // 检查是否有工具执行失败
+        boolean toolFailed = false;
+        String toolErrorResult = null;
         for (ToolCallInfo tc : toolCallTracker.getCalls()) {
             try {
                 emitter.send(SseEmitter.event().name("tool").data(tc));
@@ -243,10 +283,29 @@ public class SimpleAgent {
                 emitter.complete();
                 return;
             }
+            if (tc.result() != null && tc.result().contains("error")) {
+                toolFailed = true;
+                toolErrorResult = tc.result();
+            }
         }
 
-        // 第二阶段：流式输出文本
-        // 使用 .call() 产生的完整消息历史（包含工具结果），不传 tools 避免重复调用
+        // 工具执行失败：直接返回错误结果，跳过慢速 LLM 解释
+        if (toolFailed) {
+            String errorMsg = "工具执行失败: " + toolErrorResult;
+            safeSend(emitter, SseEmitter.event().name("text").data(errorMsg));
+            List<Message> saveNewMessages = messages.subList(historySizeBefore, messages.size());
+            if (!saveNewMessages.isEmpty()) {
+                try { sessionStorageService.saveMessages(sessionId, new ArrayList<>(saveNewMessages)); }
+                catch (Exception e) { log.error(">>> [STREAM] Failed to save error response: {}", e.getMessage()); }
+            }
+            if (isNewSession) {
+                autoGenerateTitle(sessionId, message);
+            }
+            emitter.complete();
+            return;
+        }
+
+        // 第二阶段：流式输出文本（仅工具全部成功时执行）
         try {
             final StringBuilder streamedText = new StringBuilder();
             final boolean[] saveCompleted = {false};
@@ -286,31 +345,33 @@ public class SimpleAgent {
                         if (completed[0]) return;
                         completed[0] = true;
                     }
-                    // 流式完成后，保存本轮新增的所有消息
                     try {
                         String finalText = streamedText.toString();
-
-                        // 移除 .call() 阶段产生的助手消息，用 .stream() 的最终响应替代
                         int lastIdx = messages.size() - 1;
                         if (lastIdx >= 0 && messages.get(lastIdx).getMessageType() == MessageType.ASSISTANT) {
                             messages.remove(lastIdx);
                         }
-
                         messages.add(new AssistantMessage(finalText));
                         List<Message> saveNewMessages = messages.subList(historySizeBefore, messages.size());
                         if (!saveNewMessages.isEmpty()) {
                             sessionStorageService.saveMessages(sessionId, new ArrayList<>(saveNewMessages));
                             log.info(">>> [STREAM] Saved {} messages (user + final assistant response)", saveNewMessages.size());
                         }
-
-                        // 首次对话自动生成会话标题
                         if (isNewSession) {
                             autoGenerateTitle(sessionId, message);
                         }
-
                         saveCompleted[0] = true;
                     } catch (Exception e) {
                         log.error(">>> [STREAM] Failed to save streamed response: {}", e.getMessage(), e);
+                    }
+                    if (memoryProperties.isEnabled()) {
+                        final String usrMsg = message;
+                        final String txt = streamedText.toString();
+                        CompletableFuture.runAsync(() -> {
+                            memoryManager.syncAll(usrMsg, txt);
+                            memoryManager.queuePrefetchAll(usrMsg);
+                            memoryExtractor.extract(usrMsg, txt);
+                        });
                     }
                     log.info(">>> [STREAM] Complete, saved={}", saveCompleted[0]);
                     emitter.complete();
@@ -336,6 +397,12 @@ public class SimpleAgent {
         log.info(">>> [WS-REQUEST] sessionId={}", sessionId);
 
         sessionStorageService.createSession(sessionId, null);
+
+        // 首次请求时初始化记忆系统
+        if (memoryProperties.isEnabled()) {
+            memoryManager.initializeAll(sessionId);
+        }
+
         List<Message> messages = new ArrayList<>(sessionStorageService.loadSession(sessionId));
         boolean isNewSession = messages.isEmpty();
 
@@ -363,15 +430,37 @@ public class SimpleAgent {
             toolCallTracker.stopTracking();
         }
 
-        // 推送工具调用事件
+        // 检查是否有工具执行失败
+        boolean toolFailed = false;
+        String toolErrorResult = null;
         for (ToolCallInfo tc : toolCallTracker.getCalls()) {
             wsSender.accept(WsMessage.toolCall(tc.toolName(), tc.arguments()));
             if (tc.result() != null && !tc.result().isBlank()) {
                 wsSender.accept(WsMessage.toolResult(tc.toolName(), tc.result(), tc.elapsedMs()));
+                if (tc.result().contains("error")) {
+                    toolFailed = true;
+                    toolErrorResult = tc.result();
+                }
             }
         }
 
-        // 第二阶段：流式输出文本
+        // 工具执行失败：直接返回错误结果，跳过慢速 LLM 解释
+        if (toolFailed) {
+            wsSender.accept(WsMessage.text("工具执行失败: " + toolErrorResult));
+            List<Message> saveNewMessages = messages.subList(historySizeBefore, messages.size());
+            if (!saveNewMessages.isEmpty()) {
+                try { sessionStorageService.saveMessages(sessionId, new ArrayList<>(saveNewMessages)); }
+                catch (Exception e) { log.error(">>> [WS] Failed to save error response: {}", e.getMessage()); }
+            }
+            if (isNewSession) {
+                autoGenerateTitle(sessionId, message);
+            }
+            log.info(">>> [WS] Complete (tool error, skipped LLM explanation)");
+            wsSender.accept(WsMessage.done());
+            return;
+        }
+
+        // 第二阶段：流式输出文本（仅工具全部成功时执行）
         try {
             final StringBuilder streamedText = new StringBuilder();
 
@@ -396,29 +485,32 @@ public class SimpleAgent {
                     wsSender.accept(WsMessage.done());
                 },
                 () -> {
-                    // 流式完成后保存消息
                     try {
                         String finalText = streamedText.toString();
-
-                        // 移除 .call() 阶段的助手消息，用 .stream() 的最终响应替代
                         int lastIdx = messages.size() - 1;
                         if (lastIdx >= 0 && messages.get(lastIdx).getMessageType() == MessageType.ASSISTANT) {
                             messages.remove(lastIdx);
                         }
-
                         messages.add(new AssistantMessage(finalText));
                         List<Message> saveNewMessages = messages.subList(historySizeBefore, messages.size());
                         if (!saveNewMessages.isEmpty()) {
                             sessionStorageService.saveMessages(sessionId, new ArrayList<>(saveNewMessages));
                             log.info(">>> [WS] Saved {} messages", saveNewMessages.size());
                         }
-
-                        // 首次对话自动生成会话标题
                         if (isNewSession) {
                             autoGenerateTitle(sessionId, message);
                         }
                     } catch (Exception e) {
                         log.error(">>> [WS] Failed to save response: {}", e.getMessage(), e);
+                    }
+                    if (memoryProperties.isEnabled()) {
+                        final String usrMsg = message;
+                        final String txt = streamedText.toString();
+                        CompletableFuture.runAsync(() -> {
+                            memoryManager.syncAll(usrMsg, txt);
+                            memoryManager.queuePrefetchAll(usrMsg);
+                            memoryExtractor.extract(usrMsg, txt);
+                        });
                     }
                     log.info(">>> [WS] Complete");
                     wsSender.accept(WsMessage.done());

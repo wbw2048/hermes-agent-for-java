@@ -1,5 +1,7 @@
 package com.hermes.agent.prompt;
 
+import com.hermes.agent.config.MemoryProperties;
+import com.hermes.agent.memory.MemoryManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,9 +16,15 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class PromptBuilderTest {
 
+    private MemoryManager createMemoryManager() {
+        MemoryProperties props = new MemoryProperties();
+        props.setEnabled(false);
+        return new MemoryManager(props);
+    }
+
     @Test
     void buildsPromptWithDefaultIdentity() {
-        PromptBuilder builder = new PromptBuilder("");
+        PromptBuilder builder = new PromptBuilder("", createMemoryManager());
         String prompt = builder.buildSystemPrompt();
         assertNotNull(prompt);
         assertTrue(prompt.length() > 0);
@@ -26,7 +34,7 @@ class PromptBuilderTest {
 
     @Test
     void buildsPromptWithCustomDefault() {
-        PromptBuilder builder = new PromptBuilder("你是自定义助手。");
+        PromptBuilder builder = new PromptBuilder("你是自定义助手。", createMemoryManager());
         String prompt = builder.buildSystemPrompt();
         // buildSystemPrompt 总是先加入身份部分
         assertNotNull(prompt);

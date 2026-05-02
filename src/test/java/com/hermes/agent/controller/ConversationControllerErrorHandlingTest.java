@@ -2,6 +2,7 @@ package com.hermes.agent.controller;
 
 import com.hermes.agent.agent.SimpleAgent;
 import com.hermes.agent.config.ErrorHandlingProperties;
+import com.hermes.agent.memory.MemoryStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -26,9 +27,11 @@ class ConversationControllerErrorHandlingTest {
     @BeforeEach
     void setUp() {
         agent = mock(SimpleAgent.class);
+        MemoryStore memoryStore = mock(MemoryStore.class);
         ErrorHandlingProperties props = new ErrorHandlingProperties();
         when(agent.getToolCallTracker()).thenReturn(new ToolCallTracker(props));
-        mockMvc = MockMvcBuilders.standaloneSetup(new ConversationController(agent)).build();
+        when(memoryStore.getAllEntries()).thenReturn(java.util.Map.of());
+        mockMvc = MockMvcBuilders.standaloneSetup(new ConversationController(agent, memoryStore)).build();
     }
 
     @Test

@@ -16,13 +16,14 @@
 ## 主要功能
 
 - 基于 `@Tool` 注解的工具调用系统（Spring AI 自动管理工具循环）
-- 内置工具：日期时间、文件读写、终端命令执行
+- 内置工具：日期时间、文件读写、终端命令执行、记忆管理
 - SQLite 会话存储与多会话管理
 - 上下文压缩（Token 估算 + 工具结果裁剪）
 - 提示注入检测与上下文文件发现
 - Persona 设置与 Web 聊天界面
 - WebSocket 实时双向通信（SSE 模式可切换降级）
 - 错误处理与重试机制（LLM 自动重试、工具异常隔离、断线恢复）
+- 长期记忆系统（跨会话记忆、自动提取、注入威胁防护）
 - 会话标题自动生成
 
 ## 快速开始
@@ -47,6 +48,7 @@ src/main/java/com/hermes/agent/
 ├── controller/     # REST 接口
 ├── entity/         # 数据库实体
 ├── error/          # 错误处理（分类器、全局异常处理器）
+├── memory/         # 长期记忆（MemoryStore, MemoryManager, MemoryExtractor）
 ├── prompt/         # 提示构建与注入检测
 ├── repository/     # 数据访问层
 ├── service/        # 业务逻辑层

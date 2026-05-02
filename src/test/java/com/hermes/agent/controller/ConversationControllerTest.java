@@ -2,6 +2,7 @@ package com.hermes.agent.controller;
 
 import com.hermes.agent.agent.SimpleAgent;
 import com.hermes.agent.config.ErrorHandlingProperties;
+import com.hermes.agent.memory.MemoryStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.Message;
@@ -29,8 +30,10 @@ class ConversationControllerTest {
     @BeforeEach
     void setUp() {
         agent = mock(SimpleAgent.class);
+        MemoryStore memoryStore = mock(MemoryStore.class);
         when(agent.getToolCallTracker()).thenReturn(new ToolCallTracker(new ErrorHandlingProperties()));
-        mockMvc = MockMvcBuilders.standaloneSetup(new ConversationController(agent)).build();
+        when(memoryStore.getAllEntries()).thenReturn(java.util.Map.of());
+        mockMvc = MockMvcBuilders.standaloneSetup(new ConversationController(agent, memoryStore)).build();
     }
 
     @Test

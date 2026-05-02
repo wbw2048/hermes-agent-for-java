@@ -103,6 +103,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void send(WebSocketSession session, WsMessage msg) {
+        if (!session.isOpen()) return;
         try {
             String json = objectMapper.writeValueAsString(msg);
             session.sendMessage(new TextMessage(json));

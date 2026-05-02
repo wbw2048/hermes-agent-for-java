@@ -1,5 +1,6 @@
 package com.hermes.agent.prompt;
 
+import com.hermes.agent.memory.MemoryManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,7 +10,7 @@ import java.nio.file.Path;
 
 /**
  * 系统提示构建器。
- * 组装智能体身份、上下文文件发现和配置的默认提示词。
+ * 组装智能体身份、上下文文件发现、长期记忆和配置的默认提示词。
  */
 @Component
 public class PromptBuilder {
@@ -25,17 +26,20 @@ public class PromptBuilder {
         "在探索和研究中要有针对性和高效。";
 
     private final String defaultSystemPrompt;
+    private final MemoryManager memoryManager;
 
     public PromptBuilder(
             @Value("${hermes.agent.default-system-prompt:}")
-            String defaultSystemPrompt
+            String defaultSystemPrompt,
+            MemoryManager memoryManager
     ) {
         this.defaultSystemPrompt = defaultSystemPrompt;
+        this.memoryManager = memoryManager;
     }
 
     /**
      * 构建系统提示。
-     * 组装顺序：智能体身份 → 上下文文件发现 → 配置的默认提示词（兜底）。
+     * 组装顺序：智能体身份 → 上下文文件发现 → 长期记忆快照 → 配置的默认提示词（兜底）。
      *
      * @return 完整的系统提示文本
      */
@@ -52,7 +56,13 @@ public class PromptBuilder {
             prompt.append("\n\n").append(contextPrompt);
         }
 
-        // 3. 配置的默认提示词兜底（当无 SOUL.md 且无上下文文件时使用）
+        // 3. 长期记忆快照
+        String memoryBlock = memoryManager.buildSystemPrompt();
+        if (!memoryBlock.isEmpty()) {
+            prompt.append("\n\n").append(memoryBlock);
+        }
+
+        // 4. 配置的默认提示词兜底（当无 SOUL.md 且无上下文文件时使用）
         if (prompt.isEmpty() && !defaultSystemPrompt.isEmpty()) {
             prompt.append(defaultSystemPrompt);
         }

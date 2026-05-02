@@ -2,6 +2,7 @@ package com.hermes.agent.controller;
 
 import com.hermes.agent.agent.SimpleAgent;
 import com.hermes.agent.entity.SessionEntity;
+import com.hermes.agent.memory.MemoryStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
@@ -29,9 +30,11 @@ public class ConversationController {
     private static final Logger log = LoggerFactory.getLogger(ConversationController.class);
 
     private final SimpleAgent simpleAgent;
+    private final MemoryStore memoryStore;
 
-    public ConversationController(@Lazy SimpleAgent simpleAgent) {
+    public ConversationController(@Lazy SimpleAgent simpleAgent, MemoryStore memoryStore) {
         this.simpleAgent = simpleAgent;
+        this.memoryStore = memoryStore;
     }
 
     /**
@@ -239,5 +242,62 @@ public class ConversationController {
         simpleAgent.streamConversation(sessionId, request.message(), emitter);
 
         return emitter;
+    }
+
+    // ==================== 记忆管理 API ====================
+
+    /**
+     * 查看当前长期记忆条目。
+     * GET /api/memory
+     */
+    @GetMapping("/memory")
+    public ResponseEntity<Map<String, Object>> getMemory() {
+        Map<String, List<String>> entries = memoryStore.getAllEntries();
+        return ResponseEntity.ok(Map.of("success", true, "entries", entries));
+    }
+
+    /**
+     * 手动添加记忆。
+     * POST /api/memory/{target}
+     * Body: { "content": "条目内容" }
+     */
+    @PostMapping("/memory/{target}")
+    public ResponseEntity<Map<String, Object>> addMemory(
+            @PathVariable String target,
+            @RequestBody Map<String, String> request
+    ) {
+        String content = request.get("content");
+        if (content == null || content.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "content is required"));
+        }
+        if (!"memory".equals(target) && !"user".equals(target)) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "target must be 'memory' or 'user'"));
+        }
+        Map<String, Object> result = memoryStore.add(target, content);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 清除指定目标的所有记忆。
+     * DELETE /api/memory/{target}
+     */
+    @DeleteMapping("/memory/{target}")
+    public ResponseEntity<Map<String, String>> clearMemory(@PathVariable String target) {
+        if (!"memory".equals(target) && !"user".equals(target)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "target must be 'memory' or 'user'"));
+        }
+        memoryStore.clear(target);
+        return ResponseEntity.ok(Map.of("status", "success", "message", target + " memory cleared"));
+    }
+
+    /**
+     * 清除所有记忆（memory + user）。
+     * DELETE /api/memory
+     */
+    @DeleteMapping("/memory")
+    public ResponseEntity<Map<String, String>> clearAllMemory() {
+        memoryStore.clear("memory");
+        memoryStore.clear("user");
+        return ResponseEntity.ok(Map.of("status", "success", "message", "all memory cleared"));
     }
 }

@@ -1076,7 +1076,7 @@
                         connectionStatus.textContent = '已连接';
                         connectionStatus.style.color = 'var(--success)';
                     }
-                    sendButton.disabled = false;
+                    sendButton.disabled = messageInput.value.trim() === '';
                     await loadSessions();
                     if (sessionsCache.length > 0) {
                         selectSession(sessionsCache[0].id);
@@ -1192,6 +1192,7 @@
                     updateSessionInfo();
                     updateActionButtons();
                     await loadSessions();
+                    sendButton.disabled = messageInput.value.trim() === '';
                     messageInput.focus();
                     return;
                 }
@@ -1204,6 +1205,7 @@
             addMessageToChat('system', '新会话已创建');
             updateSessionInfo();
             renderSessionList();
+            sendButton.disabled = messageInput.value.trim() === '';
             messageInput.focus();
         }
 
@@ -1236,6 +1238,7 @@
             } catch (e) {
                 console.error('Load history failed:', e);
             }
+            sendButton.disabled = messageInput.value.trim() === '';
             messageInput.focus();
         }
 
