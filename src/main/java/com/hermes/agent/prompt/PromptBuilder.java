@@ -46,17 +46,21 @@ public class PromptBuilder {
     public String buildSystemPrompt(String sessionId) {
         StringBuilder prompt = new StringBuilder();
 
-        // 1. 智能体身份（SOUL.md 或配置的默认提示词）
+        // 1. 角色（SOUL.md 或配置的默认提示词）
         String soulMd = ContextFileDiscovery.loadSoulMd();
-        prompt.append(!soulMd.isEmpty() ? soulMd : defaultSystemPrompt);
-
-        // 2. 上下文文件发现（会话感知）
-        String contextPrompt = ContextFileDiscovery.buildContextFilesPrompt(sessionId);
-        if (!contextPrompt.isEmpty()) {
-            prompt.append("\n\n").append(contextPrompt);
+        if (!soulMd.isEmpty()) {
+            prompt.append("=== 角色 (Role) ===\n").append(soulMd);
+        } else if (!defaultSystemPrompt.isEmpty()) {
+            prompt.append("=== 角色 (Role) ===\n").append(defaultSystemPrompt);
         }
 
-        // 3. 长期记忆快照
+        // 2. 项目上下文（会话感知）
+        String contextPrompt = ContextFileDiscovery.buildContextFilesPrompt(sessionId);
+        if (!contextPrompt.isEmpty()) {
+            prompt.append("\n\n=== 项目上下文 (Project Context) ===\n").append(contextPrompt);
+        }
+
+        // 3. 记忆 + 用户画像
         String memoryBlock = memoryManager.buildSystemPrompt();
         if (!memoryBlock.isEmpty()) {
             prompt.append("\n\n").append(memoryBlock);

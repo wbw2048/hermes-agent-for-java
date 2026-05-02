@@ -63,6 +63,9 @@ public class MemoryTools {
         - 'user': who the user is -- name, role, preferences, communication style, pet peeves
         - 'memory': your notes -- environment facts, project conventions, tool quirks, lessons learned
 
+        IMPORTANT: You CANNOT write to 'soul' (agent role/personality). Only the user can modify
+        the agent's role through the UI. Attempting to write to 'soul' will be rejected.
+
         SKIP: trivial/obvious info, things easily re-discovered, raw data dumps, and temporary task state.
         """)
     public String memory(
@@ -74,6 +77,11 @@ public class MemoryTools {
 
         if (!properties.isEnabled()) {
             return "{\"success\": false, \"error\": \"Memory is disabled in configuration.\"}";
+        }
+
+        // 角色设定（SOUL.md）仅用户可通过 UI 修改，智能体不可写入
+        if ("soul".equals(target)) {
+            return "{\"success\": false, \"error\": \"Cannot write to 'soul' target. Agent role (SOUL.md) can only be modified by the user through the UI.\"}";
         }
 
         return switch (action) {

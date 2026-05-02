@@ -56,20 +56,22 @@ public class BuiltinMemoryProvider implements MemoryProvider {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("\n\n## Memory (Persistent Notes)\n");
-        sb.append("The following is your persistent memory, loaded at session start.\n");
-        sb.append("These notes are stable across turns — do not re-save them unless they have changed.\n");
+        sb.append("=== 记忆 (Memory) ===\n");
+        sb.append("以下为你在跨会话中保存的事实笔记，内容在轮次间保持稳定，除非有变化否则不要重新保存。\n");
 
         if (memoryBlock != null) {
             sb.append("\n").append(memoryBlock);
         } else {
-            sb.append("\n(No memory notes yet)\n");
+            sb.append("\n(暂无记忆笔记)\n");
         }
 
+        sb.append("\n\n=== 用户画像 (User Profile) ===\n");
+        sb.append("以下为关于用户的个人信息（偏好、习惯、角色等）。\n");
+
         if (userBlock != null) {
-            sb.append("\n\n").append(userBlock);
+            sb.append("\n").append(userBlock);
         } else {
-            sb.append("\n(No user profile yet)\n");
+            sb.append("\n(暂无用户画像)\n");
         }
 
         return sb.toString();

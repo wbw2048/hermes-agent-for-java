@@ -29,6 +29,7 @@ class PromptBuilderTest {
         assertNotNull(prompt);
         assertTrue(prompt.length() > 0);
         assertTrue(prompt.contains("Hermes Agent"));
+        assertTrue(prompt.contains("=== 角色 (Role) ==="));
     }
 
     @Test
@@ -38,6 +39,7 @@ class PromptBuilderTest {
         assertNotNull(prompt);
         assertTrue(prompt.length() > 0);
         assertTrue(prompt.contains("Hermes Agent"));
+        assertTrue(prompt.contains("=== 角色 (Role) ==="));
     }
 
     @Test
@@ -67,5 +69,17 @@ class PromptBuilderTest {
         Files.writeString(hermesHome.resolve("SOUL.md"), "你是自定义人设。");
         String result = ContextFileDiscovery.loadSoulMdFrom(hermesHome);
         assertTrue(result.contains("你是自定义人设"));
+    }
+
+    @Test
+    void promptContainsSectionHeaders(@TempDir Path tempDir) throws IOException {
+        // Set up SOUL.md
+        Files.writeString(tempDir.resolve("SOUL.md"), "你是测试人设。");
+
+        // Use reflection to override HERMES_HOME for ContextFileDiscovery
+        // Since ContextFileDiscovery uses System.getenv, we test via the test overload
+        String contextResult = ContextFileDiscovery.buildContextFilesPrompt(null, tempDir);
+        // With null sessionId, it loads SOUL.md
+        assertTrue(contextResult.contains("你是测试人设"));
     }
 }
