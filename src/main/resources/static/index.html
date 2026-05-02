@@ -7,6 +7,29 @@
     <!-- Markdown 渲染 -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
+        :root {
+            --accent: #0071e3;
+            --accent-hover: #0077ed;
+            --accent-active: #005bbf;
+            --bg: #ffffff;
+            --surface: #f5f5f7;
+            --surface-elevated: #fafafa;
+            --sidebar: #fbfbfd;
+            --border: #e5e5e7;
+            --border-subtle: #f0f0f2;
+            --text: #1d1d1f;
+            --text-secondary: #6e6e73;
+            --text-tertiary: #86868b;
+            --success: #34c759;
+            --error: #ff3b30;
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 10px;
+            --radius-xl: 14px;
+            --fast: 0.15s ease;
+            --normal: 0.2s ease;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -14,90 +37,102 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+                         'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--bg);
             min-height: 100vh;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem;
-            color: #333;
+            color: var(--text);
         }
 
         .app-wrapper {
             display: flex;
             width: 100%;
-            max-width: 1100px;
-            height: 90vh;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            height: 100vh;
+            background: var(--bg);
             overflow: hidden;
         }
 
         /* ── 侧边栏 ── */
         .sidebar {
             width: 260px;
-            background: #1a1a2e;
-            color: #e0e0e0;
+            background: var(--sidebar);
+            color: var(--text);
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
+            border-right: 1px solid var(--border);
         }
 
         .sidebar-header {
-            padding: 1.2rem;
-            border-bottom: 1px solid #2a2a4a;
+            padding: 16px 16px 12px;
+            border-bottom: 1px solid var(--border);
         }
 
         .sidebar-header h2 {
-            font-size: 1.1rem;
-            margin-bottom: 0.8rem;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 12px;
+            letter-spacing: -0.008em;
         }
 
         .new-session-btn {
             width: 100%;
-            padding: 0.6rem;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
+            padding: 8px 16px;
+            background: var(--accent);
+            color: #fff;
             border: none;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             cursor: pointer;
-            font-size: 0.9rem;
-            transition: opacity 0.2s;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background-color var(--fast);
         }
 
-        .new-session-btn:hover { opacity: 0.85; }
+        .new-session-btn:hover { background: var(--accent-hover); }
+        .new-session-btn:active { background: var(--accent-active); }
 
         .session-list {
             flex: 1;
             overflow-y: auto;
-            padding: 0.5rem;
+            padding: 8px;
         }
 
         .session-item {
-            padding: 0.7rem 0.8rem;
-            border-radius: 8px;
+            padding: 8px 12px;
+            border-radius: var(--radius-md);
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 8px;
             margin-bottom: 2px;
-            transition: background 0.15s;
+            transition: background-color var(--fast);
         }
 
         .session-item:hover {
-            background: #2a2a4a;
+            background: var(--border-subtle);
         }
 
         .session-item.active {
-            background: #667eea;
-            color: white;
+            background: #e8e8ed;
+            color: var(--text);
         }
 
         .session-icon {
-            font-size: 1rem;
+            font-size: 14px;
             flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+            border: 1.5px solid #c7c7cc;
+            border-radius: 3px;
+            opacity: 0.5;
+        }
+
+        .session-item.active .session-icon {
+            border-color: var(--accent);
+            background: var(--accent);
+            opacity: 1;
         }
 
         .session-info {
@@ -106,15 +141,15 @@
         }
 
         .session-title {
-            font-size: 0.85rem;
+            font-size: 13px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         .session-time {
-            font-size: 0.7rem;
-            opacity: 0.6;
+            font-size: 11px;
+            color: var(--text-tertiary);
         }
 
         .session-actions {
@@ -130,22 +165,23 @@
         .session-action-btn {
             background: none;
             border: none;
-            color: #aaa;
+            color: var(--text-tertiary);
             cursor: pointer;
-            font-size: 0.85rem;
+            font-size: 12px;
             padding: 2px 4px;
             border-radius: 4px;
-            transition: background 0.15s;
+            transition: color var(--fast), background-color var(--fast);
+            line-height: 1;
         }
 
         .session-action-btn:hover {
-            background: rgba(255,255,255,0.15);
-            color: white;
+            background: rgba(0,0,0,0.06);
+            color: var(--text);
         }
 
         .session-action-btn.delete-btn:hover {
-            background: rgba(220,50,50,0.3);
-            color: #ff6b6b;
+            background: rgba(255,59,48,0.08);
+            color: var(--error);
         }
 
         /* ── 主区域 ── */
@@ -157,115 +193,169 @@
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 1rem 1.5rem;
+            background: var(--bg);
+            color: var(--text);
+            padding: 12px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            border-bottom: 1px solid var(--border);
+            min-height: 52px;
+            flex-shrink: 0;
         }
 
         .header h1 {
-            font-size: 1.3rem;
+            font-size: 17px;
             font-weight: 600;
+            letter-spacing: -0.022em;
         }
 
         .header-right {
             display: flex;
             align-items: center;
-            gap: 0.8rem;
+            gap: 8px;
         }
 
         .action-btn {
-            background: rgba(255,255,255,0.15);
-            border: none;
-            color: white;
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text);
             cursor: pointer;
-            padding: 0.3rem 0.6rem;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            transition: background 0.2s;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 500;
+            transition: background-color var(--fast), border-color var(--fast);
             white-space: nowrap;
         }
 
-        .action-btn:hover { background: rgba(255,255,255,0.25); }
+        .action-btn:hover {
+            background: var(--border-subtle);
+            border-color: #d2d2d7;
+        }
+
         .action-btn.hidden { display: none; }
 
         .current-session-info {
-            font-size: 0.8rem;
-            opacity: 0.85;
+            font-size: 12px;
+            color: var(--text-secondary);
         }
 
         .status {
-            background: #4CAF50;
-            color: white;
-            padding: 0.3rem 0.8rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
+            background: none;
+            color: var(--success);
+            padding: 0;
+            border-radius: 0;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status::before {
+            content: '';
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--success);
+            margin-right: 6px;
+            vertical-align: middle;
         }
 
         .chat-container {
             flex: 1;
             overflow-y: auto;
-            padding: 1.5rem;
+            padding: 24px 0;
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: 4px;
         }
 
+        /* ── 消息 ── */
         .message {
-            max-width: 80%;
-            padding: 0.8rem 1.2rem;
-            border-radius: 18px;
-            line-height: 1.5;
-        }
-
-        .user-message {
-            background: #667eea;
-            color: white;
-            align-self: flex-end;
-            border-bottom-right-radius: 4px;
-        }
-
-        .assistant-message {
-            background: #f0f0f0;
-            color: #333;
-            align-self: flex-start;
-            border-bottom-left-radius: 4px;
-        }
-
-        .system-message {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            color: #666;
-            align-self: center;
-            font-size: 0.85rem;
-            font-style: italic;
-            max-width: 90%;
-            text-align: center;
+            max-width: 720px;
+            padding: 4px 20px;
+            line-height: 1.6;
+            width: 100%;
         }
 
         .message-header {
-            font-size: 0.75rem;
-            opacity: 0.8;
-            margin-bottom: 0.3rem;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-tertiary);
+            margin-bottom: 4px;
+            letter-spacing: 0.01em;
+        }
+
+        .user-message {
+            align-self: flex-end;
+            padding: 10px 16px;
+            max-width: 70%;
+            background: var(--accent);
+            color: #fff;
+            border-radius: 12px;
+            border-bottom-right-radius: 4px;
+        }
+
+        .user-message .message-header {
+            color: rgba(255,255,255,0.7);
+        }
+
+        .user-message .message-content a {
+            color: rgba(255,255,255,0.9);
+        }
+
+        .assistant-message {
+            align-self: flex-start;
+            padding: 4px 20px;
+            max-width: 100%;
+            background: none;
+            color: var(--text);
+        }
+
+        .assistant-message .message-header {
+            color: var(--text-tertiary);
+        }
+
+        .system-message {
+            align-self: center;
+            padding: 6px 16px;
+            max-width: 80%;
+            background: var(--surface);
+            border: none;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-style: normal;
+            font-weight: 400;
+            text-align: center;
+            border-radius: var(--radius-md);
         }
 
         /* Markdown 内容样式 */
         .message-content pre {
-            background: #2d2d2d;
-            color: #f8f8f2;
-            padding: 0.8rem 1rem;
-            border-radius: 8px;
+            background: var(--surface);
+            color: var(--text);
+            padding: 12px 16px;
+            border-radius: var(--radius-md);
             overflow-x: auto;
-            font-size: 0.85rem;
-            line-height: 1.4;
-            margin: 0.5rem 0;
+            font-size: 13px;
+            line-height: 1.5;
+            margin: 8px 0;
+            border: 1px solid var(--border);
         }
 
         .message-content code {
-            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-            font-size: 0.85em;
+            font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+            font-size: 0.875em;
+            background: var(--surface);
+            padding: 2px 5px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+        }
+
+        .message-content pre code {
+            background: none;
+            padding: 0;
+            border: none;
         }
 
         .message-content p { margin: 0.4rem 0; }
@@ -274,10 +364,10 @@
             margin: 0.3rem 0;
         }
         .message-content blockquote {
-            border-left: 3px solid #667eea;
-            padding-left: 0.8rem;
-            margin: 0.3rem 0;
-            color: #666;
+            border-left: 3px solid #d2d2d7;
+            padding-left: 12px;
+            margin: 8px 0;
+            color: var(--text-secondary);
         }
         .message-content h1, .message-content h2, .message-content h3, .message-content h4 {
             margin: 0.6rem 0 0.3rem 0;
@@ -288,12 +378,17 @@
         .message-content h3 { font-size: 1rem; }
         .message-content h4 { font-size: 0.95rem; }
         .message-content a {
-            color: #667eea;
-            text-decoration: underline;
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color var(--fast);
+        }
+        .message-content a:hover {
+            border-bottom-color: var(--accent);
         }
         .message-content hr {
             border: none;
-            border-top: 1px solid #ddd;
+            border-top: 1px solid var(--border);
             margin: 0.8rem 0;
         }
         .message-content table {
@@ -302,43 +397,50 @@
             font-size: 0.9rem;
         }
         .message-content th, .message-content td {
-            border: 1px solid #ddd;
+            border: 1px solid var(--border);
             padding: 0.4rem 0.6rem;
         }
         .message-content th {
-            background: #f5f5f5;
+            background: var(--surface);
             font-weight: 600;
         }
 
         /* ── 工具调用卡片 ── */
         .tool-call-card {
             align-self: flex-start;
-            max-width: 80%;
+            max-width: 720px;
             width: 100%;
-            border-radius: 12px;
-            border: 1px solid #e0e0e0;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
             overflow: hidden;
-            background: #fafafa;
+            background: var(--surface-elevated);
+            transition: border-color var(--fast);
+            margin: 0 20px;
+        }
+
+        .tool-call-card:hover {
+            border-color: #d2d2d7;
         }
 
         .tool-call-header {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.6rem 0.8rem;
+            gap: 8px;
+            padding: 8px 12px;
             cursor: pointer;
-            font-size: 0.85rem;
-            transition: background 0.15s;
+            font-size: 13px;
+            transition: background-color var(--fast);
             user-select: none;
         }
 
         .tool-call-header:hover {
-            background: #f0f0f0;
+            background: var(--border-subtle);
         }
 
         .tool-call-chevron {
-            font-size: 0.7rem;
-            transition: transform 0.2s;
+            font-size: 10px;
+            color: var(--text-tertiary);
+            transition: transform 0.2s ease;
             flex-shrink: 0;
         }
 
@@ -347,20 +449,35 @@
         }
 
         .tool-call-icon {
-            font-size: 0.9rem;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            opacity: 0.5;
             flex-shrink: 0;
         }
 
+        .tool-call-card.status-done .tool-call-icon {
+            background: var(--success);
+            opacity: 0.7;
+        }
+
+        .tool-call-card.status-error .tool-call-icon {
+            background: var(--error);
+            opacity: 0.7;
+        }
+
         .tool-call-name {
-            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
             font-weight: 600;
+            font-size: 12px;
             flex-shrink: 0;
         }
 
         .tool-call-args {
-            font-family: 'SF Mono', 'Fira Code', monospace;
-            font-size: 0.75rem;
-            color: #888;
+            font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+            font-size: 12px;
+            color: var(--text-tertiary);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -370,21 +487,27 @@
 
         .tool-call-status {
             flex-shrink: 0;
-            font-size: 0.85rem;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--success);
+        }
+
+        .tool-call-card.status-error .tool-call-status {
+            color: var(--error);
         }
 
         .tool-call-elapsed {
-            font-size: 0.7rem;
-            color: #999;
-            font-family: monospace;
+            font-size: 11px;
+            color: var(--text-tertiary);
+            font-family: 'SF Mono', 'Fira Code', monospace;
             flex-shrink: 0;
         }
 
         .tool-call-body {
             display: none;
-            border-top: 1px solid #e0e0e0;
-            padding: 0.6rem 0.8rem;
-            font-size: 0.8rem;
+            border-top: 1px solid var(--border);
+            padding: 8px 12px;
+            font-size: 12px;
         }
 
         .tool-call-body.open {
@@ -392,7 +515,7 @@
         }
 
         .tool-call-section {
-            margin-bottom: 0.5rem;
+            margin-bottom: 8px;
         }
 
         .tool-call-section:last-child {
@@ -400,153 +523,200 @@
         }
 
         .tool-call-label {
-            font-size: 0.65rem;
+            font-size: 10px;
+            font-weight: 500;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #999;
-            margin-bottom: 0.2rem;
+            letter-spacing: 0.06em;
+            color: var(--text-tertiary);
+            margin-bottom: 4px;
         }
 
         .tool-call-value {
-            font-family: 'SF Mono', 'Fira Code', monospace;
-            font-size: 0.75rem;
-            color: #555;
+            font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
             white-space: pre-wrap;
             word-break: break-all;
-            background: #f5f5f5;
-            padding: 0.4rem 0.6rem;
+            background: var(--surface);
+            padding: 6px 8px;
             border-radius: 4px;
             max-height: 200px;
             overflow-y: auto;
         }
 
         .tool-call-value.error {
-            color: #d32f2f;
-            background: #fef2f2;
+            color: var(--error);
+            background: #fff5f5;
         }
 
-        /* 工具调用状态颜色 */
         .tool-call-card.status-done {
-            border-color: #c8e6c9;
-            background: #f9fbe7;
+            border-color: var(--border);
+            background: var(--surface-elevated);
         }
-        .tool-call-card.status-done .tool-call-status { color: #2e7d32; }
 
         .tool-call-card.status-error {
-            border-color: #ffcdd2;
-            background: #fff3e0;
+            border-color: #ffd6d3;
+            background: #fffbfb;
         }
-        .tool-call-card.status-error .tool-call-status { color: #d32f2f; }
 
+        /* ── 输入区 ── */
         .input-area {
-            padding: 1rem 1.5rem;
-            border-top: 1px solid #e9ecef;
-            background: #f8f9fa;
+            padding: 16px 20px 20px;
+            border-top: 1px solid var(--border);
+            background: var(--bg);
         }
 
         .input-wrapper {
             display: flex;
-            gap: 0.8rem;
+            gap: 8px;
+            max-width: 720px;
+            margin: 0 auto;
         }
 
         #messageInput {
             flex: 1;
-            padding: 0.7rem 1rem;
-            border: 2px solid #e9ecef;
-            border-radius: 10px;
-            font-size: 0.95rem;
+            padding: 10px 14px;
+            border: 1px solid #d2d2d7;
+            border-radius: var(--radius-lg);
+            font-size: 15px;
             outline: none;
-            transition: border-color 0.2s;
+            transition: border-color var(--fast), box-shadow var(--fast);
+            background: var(--sidebar);
         }
 
-        #messageInput:focus { border-color: #667eea; }
+        #messageInput:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0,113,227,0.15);
+        }
+
+        #messageInput::placeholder {
+            color: var(--text-tertiary);
+        }
 
         #sendButton {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
+            background: var(--accent);
+            color: #fff;
             border: none;
-            padding: 0 1.5rem;
-            border-radius: 10px;
-            font-size: 0.95rem;
+            padding: 0 18px;
+            border-radius: var(--radius-lg);
+            font-size: 14px;
+            font-weight: 500;
             cursor: pointer;
-            transition: transform 0.15s, opacity 0.15s;
+            transition: background-color var(--fast);
+            white-space: nowrap;
         }
 
-        #sendButton:hover { transform: translateY(-1px); opacity: 0.9; }
-        #sendButton:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        #sendButton:hover { background: var(--accent-hover); }
+        #sendButton:active { background: var(--accent-active); }
+        #sendButton:disabled {
+            background: #d2d2d7;
+            color: var(--text-tertiary);
+            cursor: not-allowed;
+        }
 
+        /* ── 打字指示器 ── */
         .typing-indicator {
             display: none;
-            padding: 0.8rem 1.2rem;
-            background: #f0f0f0;
-            border-radius: 18px;
+            padding: 8px 20px;
             align-self: flex-start;
-            color: #666;
-            font-style: italic;
-            font-size: 0.85rem;
+            color: var(--text-tertiary);
+            font-size: 13px;
         }
 
-        .typing-dots { animation: typing 1.5s infinite; }
-
-        @keyframes typing {
-            0%, 60%, 100% { opacity: 0.3; }
-            30% { opacity: 1; }
+        .typing-dot {
+            display: inline-block;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--text-tertiary);
+            vertical-align: middle;
+            animation: typingBounce 1.4s infinite ease-in-out;
         }
 
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; margin: 0 3px; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typingBounce {
+            0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+            30% { opacity: 1; transform: translateY(-3px); }
+        }
+
+        /* ── 页脚 ── */
         .footer {
-            padding: 0.5rem 1.5rem;
-            background: #f8f9fa;
-            border-top: 1px solid #e9ecef;
+            padding: 8px 20px;
+            background: var(--bg);
+            border-top: 1px solid var(--border-subtle);
             text-align: center;
-            font-size: 0.75rem;
-            color: #999;
+            font-size: 12px;
+            color: var(--text-tertiary);
         }
 
         .footer a {
-            color: #667eea;
+            color: var(--text-tertiary);
             text-decoration: none;
+            transition: color var(--fast);
         }
 
-        /* 响应式 */
+        .footer a:hover { color: var(--accent); }
+
+        /* ── 响应式 ── */
         @media (max-width: 768px) {
             body { padding: 0; }
             .app-wrapper {
                 flex-direction: column;
                 height: 100vh;
-                border-radius: 0;
             }
             .sidebar {
                 width: 100%;
-                max-height: 200px;
-                flex-direction: row;
-                overflow: hidden;
+                flex-direction: column;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+                max-height: 40vh;
             }
             .sidebar-header {
-                border-bottom: none;
-                border-right: 1px solid #2a2a4a;
-                padding: 0.8rem;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
+                padding: 12px 16px;
             }
             .session-list {
                 display: flex;
-                gap: 4px;
-                padding: 0.5rem;
-                overflow-x: auto;
+                flex-direction: column;
+                gap: 0;
+                padding: 0;
+                overflow-x: hidden;
+                overflow-y: auto;
             }
             .session-item {
-                white-space: nowrap;
-                min-width: 120px;
+                white-space: normal;
+                min-width: unset;
+                padding: 10px 16px;
+                border-radius: 0;
+                border-bottom: 1px solid var(--border-subtle);
+            }
+            .message {
+                max-width: 90%;
+                padding-left: 16px;
+                padding-right: 16px;
+            }
+            .tool-call-card {
+                max-width: 90%;
+                margin-left: 16px;
+                margin-right: 16px;
+            }
+            .input-wrapper {
+                max-width: none;
+            }
+            .input-area {
+                padding: 12px 16px 16px;
             }
         }
 
-        /* 标题编辑弹窗 */
+        /* ── 弹窗 ── */
         .modal-overlay {
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.3);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             z-index: 100;
             align-items: center;
             justify-content: center;
@@ -555,71 +725,89 @@
         .modal-overlay.visible { display: flex; }
 
         .modal {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            width: 320px;
+            background: var(--bg);
+            border-radius: var(--radius-xl);
+            padding: 24px;
+            width: 360px;
             max-width: 90vw;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
         }
 
         .modal h3 {
-            margin-bottom: 1rem;
-            font-size: 1rem;
+            margin-bottom: 16px;
+            font-size: 17px;
+            font-weight: 600;
+            letter-spacing: -0.022em;
         }
 
-        .modal input {
+        .modal input,
+        .modal textarea {
             width: 100%;
-            padding: 0.6rem;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            font-size: 0.9rem;
+            padding: 10px 12px;
+            border: 1px solid #d2d2d7;
+            border-radius: var(--radius-md);
+            font-size: 14px;
             outline: none;
+            transition: border-color var(--fast), box-shadow var(--fast);
+            font-family: inherit;
         }
 
-        .modal input:focus { border-color: #667eea; }
+        .modal input:focus,
+        .modal textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0,113,227,0.15);
+        }
 
         .modal-actions {
             display: flex;
             justify-content: flex-end;
-            gap: 0.5rem;
-            margin-top: 1rem;
+            gap: 8px;
+            margin-top: 16px;
         }
 
         .modal-btn {
-            padding: 0.5rem 1rem;
+            padding: 8px 16px;
             border: none;
-            border-radius: 8px;
+            border-radius: var(--radius-md);
             cursor: pointer;
-            font-size: 0.85rem;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background-color var(--fast);
         }
 
-        .modal-btn.cancel { background: #e9ecef; color: #333; }
-        .modal-btn.confirm { background: #667eea; color: white; }
-        .modal-btn.danger { background: #d32f2f; color: white; }
+        .modal-btn.cancel { background: var(--border-subtle); color: var(--text); }
+        .modal-btn.cancel:hover { background: var(--border); }
+        .modal-btn.confirm { background: var(--accent); color: #fff; }
+        .modal-btn.confirm:hover { background: var(--accent-hover); }
+        .modal-btn.danger { background: var(--error); color: #fff; }
+        .modal-btn.danger:hover { background: #e0342b; }
 
         /* 人设弹窗样式 */
         .modal-wide { width: 560px; max-width: 95vw; }
-        .persona-hint { font-size: 0.8rem; color: #888; margin: 0.5rem 0 0.8rem; }
+        .persona-hint { font-size: 13px; color: var(--text-tertiary); margin: 0 0 12px; }
         #personaContent {
             width: 100%;
             min-height: 180px;
-            padding: 0.8rem;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            font-size: 0.9rem;
+            padding: 12px;
+            border: 1px solid #d2d2d7;
+            border-radius: var(--radius-md);
+            font-size: 14px;
             font-family: inherit;
             line-height: 1.5;
             resize: vertical;
             outline: none;
         }
-        #personaContent:focus { border-color: #667eea; }
+        #personaContent:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0,113,227,0.15);
+        }
         .persona-status {
-            font-size: 0.8rem;
-            margin-top: 0.5rem;
+            font-size: 13px;
+            margin-top: 8px;
             min-height: 1.2em;
         }
-        .persona-status.error { color: #d32f2f; }
-        .persona-status.ok { color: #2e7d32; }
+        .persona-status.error { color: var(--error); }
+        .persona-status.ok { color: var(--success); }
     </style>
 </head>
 <body>
@@ -627,7 +815,7 @@
         <!-- 侧边栏 -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <h2>会话列表</h2>
+                <h2>会话</h2>
                 <button class="new-session-btn" id="newSessionBtn">+ 新建会话</button>
             </div>
             <div class="session-list" id="sessionList">
@@ -640,17 +828,17 @@
             <div class="header">
                 <h1>Hermes Agent</h1>
                 <div class="header-right">
-                    <button class="action-btn hidden" id="compressBtn" title="上下文压缩">&#x1F5DC; 压缩</button>
-                    <button class="action-btn hidden" id="clearHistoryBtn" title="清除历史">&#x1F9F9; 清空</button>
-                    <button class="action-btn" id="settingsBtn" title="人设设置">&#x2699; 设置</button>
+                    <button class="action-btn hidden" id="compressBtn" title="上下文压缩">压缩</button>
+                    <button class="action-btn hidden" id="clearHistoryBtn" title="清除历史">清空</button>
+                    <button class="action-btn" id="settingsBtn" title="人设设置">设置</button>
                     <span class="current-session-info" id="currentSessionInfo"></span>
-                    <span class="status" id="connectionStatus">连接中...</span>
+                    <span class="status" id="connectionStatus">连接中</span>
                 </div>
             </div>
 
             <div class="chat-container" id="chatContainer">
                 <div class="message system-message">
-                    <div class="message-header">系统提示</div>
+                    <div class="message-header">系统</div>
                     <div class="message-content">
                         欢迎使用 Hermes Agent！基于 Spring Boot + Spring AI + SQLite 持久化。
                     </div>
@@ -665,7 +853,9 @@
             </div>
 
             <div class="typing-indicator" id="typingIndicator">
-                <span class="typing-dots">AI 正在思考...</span>
+                <span class="typing-dot"></span>
+                <span class="typing-dot"></span>
+                <span class="typing-dot"></span>
             </div>
 
             <div class="footer">
@@ -749,7 +939,7 @@
                 if (r.ok) {
                     const data = await r.json();
                     connectionStatus.textContent = '已连接';
-                    connectionStatus.style.background = '#4CAF50';
+                    connectionStatus.style.color = 'var(--success)';
                     sendButton.disabled = false;
                     await loadSessions();
                     if (sessionsCache.length > 0) {
@@ -759,11 +949,11 @@
                     }
                 } else {
                     connectionStatus.textContent = 'API 不可用';
-                    connectionStatus.style.background = '#f44336';
+                    connectionStatus.style.color = 'var(--error)';
                 }
             } catch (e) {
                 connectionStatus.textContent = '连接失败';
-                connectionStatus.style.background = '#f44336';
+                connectionStatus.style.color = 'var(--error)';
             }
         }
 
@@ -826,14 +1016,14 @@
                 const div = document.createElement('div');
                 div.className = 'session-item' + (s.id === currentSessionId ? ' active' : '');
                 div.innerHTML = `
-                    <span class="session-icon">💬</span>
+                    <span class="session-icon"></span>
                     <div class="session-info">
                         <div class="session-title">${escapeHtml(s.title || '新会话')}</div>
                         <div class="session-time">${formatTime(s.updatedAt)}</div>
                     </div>
                     <div class="session-actions">
-                        <button class="session-action-btn rename-btn" data-id="${s.id}" title="重命名">&#x270F;</button>
-                        <button class="session-action-btn delete-btn" data-id="${s.id}" title="删除">&#x1F5D1;</button>
+                        <button class="session-action-btn rename-btn" data-id="${s.id}" title="重命名">&#x270E;</button>
+                        <button class="session-action-btn delete-btn" data-id="${s.id}" title="删除">&#x2715;</button>
                     </div>
                 `;
                 div.querySelector('.session-info').addEventListener('click', () => selectSession(s.id));
@@ -1226,20 +1416,20 @@
         function addToolCallCard(tc) {
             const card = document.createElement('div');
             const statusClass = tc.error ? 'status-error' : 'status-done';
+            const statusLabel = tc.error ? 'Err' : 'Done';
             card.className = `tool-call-card ${statusClass}`;
 
             const argsPreview = tc.arguments || '';
             const resultPreview = tc.result || '(无结果)';
-            const statusIcon = tc.error ? '✗' : '✓';
             const elapsedStr = formatElapsed(tc.elapsedMs);
 
             card.innerHTML = `
                 <div class="tool-call-header" onclick="this.nextElementSibling.classList.toggle('open'); this.querySelector('.tool-call-chevron').classList.toggle('open');">
                     <span class="tool-call-chevron">&#x25B6;</span>
-                    <span class="tool-call-icon">&#x26A1;</span>
+                    <span class="tool-call-icon"></span>
                     <span class="tool-call-name">${escapeHtml(tc.toolName)}</span>
                     <span class="tool-call-args">${escapeHtml(truncate(argsPreview, 80))}</span>
-                    <span class="tool-call-status">${statusIcon}</span>
+                    <span class="tool-call-status">${statusLabel}</span>
                     <span class="tool-call-elapsed">${elapsedStr}</span>
                 </div>
                 <div class="tool-call-body">

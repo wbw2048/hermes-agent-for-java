@@ -194,13 +194,12 @@ public class SimpleAgent {
 
         String systemPrompt = promptBuilder.buildSystemPrompt();
 
-        // 先保存用户消息，确保即使后续流程出错也不会丢失
+        // 先添加用户消息到内存（不立即保存，等流式完成后统一保存）
         UserMessage userMsg = new UserMessage(message);
         int historySizeBefore = messages.size();
-        sessionStorageService.saveMessages(sessionId, List.of(userMsg));
         messages.add(userMsg);
 
-        // 第一阶段：完成工具调用循环
+        // 第一阶段：完成工具调用循环（Spring AI 内部处理，中间消息不可见）
         toolCallTracker.startTracking();
         try {
             ChatResponse toolResponse = chatClient.prompt()
@@ -210,7 +209,9 @@ public class SimpleAgent {
                 .call()
                 .chatResponse();
 
-            messages.add(toolResponse.getResult().getOutput());
+            // .call() 产生的最终助手消息（可能包含 toolCalls 或最终文本）
+            AssistantMessage callAssistantMsg = toolResponse.getResult().getOutput();
+            messages.add(callAssistantMsg);
         } catch (Exception e) {
             log.error(">>> [STREAM-ERROR] tool loop failed: {}", e.getMessage(), e);
             try { emitter.send(SseEmitter.event().name("error").data("工具调用失败: " + e.getMessage())); }
@@ -233,10 +234,12 @@ public class SimpleAgent {
             }
         }
 
-        // 第二阶段：流式输出文本（不传 tools，历史已包含工具结果）
+        // 第二阶段：流式输出文本
+        // 使用 .call() 产生的完整消息历史（包含工具结果），不传 tools 避免重复调用
         try {
             final StringBuilder streamedText = new StringBuilder();
             final boolean[] saveCompleted = {false};
+            final boolean[] completed = {false};
 
             Flux<ChatResponse> stream = chatClient.prompt()
                 .system(systemPrompt)
@@ -250,31 +253,41 @@ public class SimpleAgent {
                     if (text != null && !text.isEmpty()) {
                         streamedText.append(text);
                         try { emitter.send(SseEmitter.event().name("text").data(text)); }
-                        catch (IOException e) { log.warn(">>> [STREAM] Failed to send text event: {}", e.getMessage()); }
+                        catch (IOException e) {
+                            log.warn(">>> [STREAM] Client disconnected, aborting: {}", e.getMessage());
+                            emitter.complete();
+                        }
                     }
                 },
                 error -> {
+                    synchronized (completed) {
+                        if (completed[0]) return;
+                        completed[0] = true;
+                    }
                     log.error(">>> [STREAM] Error: {}", error.getMessage(), error);
-                    try { emitter.send(SseEmitter.event().name("error").data(error.getMessage())); }
-                    catch (IOException e) {}
+                    safeSend(emitter, SseEmitter.event().name("error").data(error.getMessage()));
                     emitter.complete();
                 },
                 () -> {
-                    // 流式完成后，保存本轮新增的消息（工具响应 + 流式助手响应）
+                    synchronized (completed) {
+                        if (completed[0]) return;
+                        completed[0] = true;
+                    }
+                    // 流式完成后，保存本轮新增的所有消息
                     try {
                         String finalText = streamedText.toString();
 
-                        // 移除 .call() 阶段的助手消息，用 .stream() 的最终响应替代
+                        // 移除 .call() 阶段产生的助手消息，用 .stream() 的最终响应替代
                         int lastIdx = messages.size() - 1;
                         if (lastIdx >= 0 && messages.get(lastIdx).getMessageType() == MessageType.ASSISTANT) {
                             messages.remove(lastIdx);
                         }
 
                         messages.add(new AssistantMessage(finalText));
-                        List<Message> saveNewMessages = messages.subList(historySizeBefore + 1, messages.size());
+                        List<Message> saveNewMessages = messages.subList(historySizeBefore, messages.size());
                         if (!saveNewMessages.isEmpty()) {
                             sessionStorageService.saveMessages(sessionId, new ArrayList<>(saveNewMessages));
-                            log.info(">>> [STREAM] Saved streamed response, messages saved this turn: {}", saveNewMessages.size());
+                            log.info(">>> [STREAM] Saved {} messages (user + final assistant response)", saveNewMessages.size());
                         }
                         saveCompleted[0] = true;
                     } catch (Exception e) {
@@ -286,8 +299,7 @@ public class SimpleAgent {
             );
         } catch (Exception e) {
             log.error(">>> [STREAM] Failed to start stream: {}", e.getMessage(), e);
-            try { emitter.send(SseEmitter.event().name("error").data("流式响应失败: " + e.getMessage())); }
-            catch (IOException ignored) {}
+            safeSend(emitter, SseEmitter.event().name("error").data("流式响应失败: " + e.getMessage()));
             emitter.complete();
         }
     }
@@ -371,5 +383,13 @@ public class SimpleAgent {
      */
     public ToolCallTracker getToolCallTracker() {
         return toolCallTracker;
+    }
+
+    /**
+     * 安全发送 SSE 事件，忽略已关闭的 emitter。
+     */
+    private void safeSend(SseEmitter emitter, SseEmitter.SseEventBuilder event) {
+        try { emitter.send(event); }
+        catch (IOException e) { log.warn(">>> [STREAM] Failed to send SSE event: {}", e.getMessage()); }
     }
 }
