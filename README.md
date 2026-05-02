@@ -22,6 +22,8 @@
 - 提示注入检测与上下文文件发现
 - Persona 设置与 Web 聊天界面
 - WebSocket 实时双向通信（SSE 模式可切换降级）
+- 错误处理与重试机制（LLM 自动重试、工具异常隔离、断线恢复）
+- 会话标题自动生成
 
 ## 快速开始
 
@@ -39,11 +41,12 @@ mvn spring-boot:run
 
 ```
 src/main/java/com/hermes/agent/
-├── agent/          # 核心智能体 (SimpleAgent)
+├── agent/          # 核心智能体 (SimpleAgent, LlmCallService)
 ├── compressor/     # 上下文压缩
 ├── config/         # 配置类
 ├── controller/     # REST 接口
 ├── entity/         # 数据库实体
+├── error/          # 错误处理（分类器、全局异常处理器）
 ├── prompt/         # 提示构建与注入检测
 ├── repository/     # 数据访问层
 ├── service/        # 业务逻辑层
