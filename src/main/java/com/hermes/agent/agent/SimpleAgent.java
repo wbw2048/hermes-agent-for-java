@@ -153,7 +153,7 @@ public class SimpleAgent {
         messages.add(new UserMessage(userMessage));
 
         // 构建系统提示（包含记忆快照）
-        String systemPrompt = promptBuilder.buildSystemPrompt();
+        String systemPrompt = promptBuilder.buildSystemPrompt(sessionId);
         log.info(">>> [LLM-SYSTEM] {}", systemPrompt.replaceAll("\\n", "\\\\n"));
 
         // 检查是否需要上下文压缩
@@ -244,7 +244,7 @@ public class SimpleAgent {
         List<Message> messages = new ArrayList<>(sessionStorageService.loadSession(sessionId));
         boolean isNewSession = messages.isEmpty();
 
-        String systemPrompt = promptBuilder.buildSystemPrompt();
+        String systemPrompt = promptBuilder.buildSystemPrompt(sessionId);
 
         // 先添加用户消息到内存（不立即保存，等流式完成后统一保存）
         UserMessage userMsg = new UserMessage(message);
@@ -406,7 +406,7 @@ public class SimpleAgent {
         List<Message> messages = new ArrayList<>(sessionStorageService.loadSession(sessionId));
         boolean isNewSession = messages.isEmpty();
 
-        String systemPrompt = promptBuilder.buildSystemPrompt();
+        String systemPrompt = promptBuilder.buildSystemPrompt(sessionId);
 
         UserMessage userMsg = new UserMessage(message);
         int historySizeBefore = messages.size();

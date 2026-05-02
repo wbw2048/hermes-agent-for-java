@@ -903,11 +903,43 @@
     <!-- 人设设置弹窗 -->
     <div class="modal-overlay" id="personaModal">
         <div class="modal modal-wide">
-            <h3>AI 人设（SOUL.md）</h3>
-            <p class="persona-hint">定义 AI 智能体的身份、沟通风格和行为准则。内容将在每次对话时注入系统提示。</p>
-            <textarea id="personaContent" placeholder="例如：你是资深 Java 工程师，擅长代码审查，回复要简洁直接..."></textarea>
-            <div class="persona-status" id="personaStatus"></div>
-            <div class="modal-actions">
+            <h3>设置</h3>
+            <!-- Tab 切换 -->
+            <div style="display:flex;gap:4px;margin-bottom:16px;">
+                <button class="tab-btn active" id="tabPersona" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--accent);color:#fff;font-size:13px;font-weight:500;cursor:pointer;">人设（SOUL.md）</button>
+                <button class="tab-btn" id="tabContext" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">上下文文件</button>
+            </div>
+            <!-- 人设 Tab -->
+            <div id="personaTabContent">
+                <p class="persona-hint">定义 AI 智能体的身份、沟通风格和行为准则。内容将在每次对话时注入系统提示。</p>
+                <textarea id="personaContent" placeholder="例如：你是资深 Java 工程师，擅长代码审查，回复要简洁直接..."></textarea>
+                <div class="persona-status" id="personaStatus"></div>
+            </div>
+            <!-- 上下文文件 Tab -->
+            <div id="contextTabContent" style="display:none;">
+                <p class="persona-hint">为当前会话创建独立的上下文文件（CLAUDE.md、AGENTS.md 等），不同会话互不影响。</p>
+                <div id="contextFileList" style="max-height:200px;overflow-y:auto;margin-bottom:8px;"></div>
+                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                    <button class="action-btn" onclick="createContextFile('.hermes.md')">+ .hermes.md</button>
+                    <button class="action-btn" onclick="createContextFile('AGENTS.md')">+ AGENTS.md</button>
+                    <button class="action-btn" onclick="createContextFile('CLAUDE.md')">+ CLAUDE.md</button>
+                </div>
+                <div class="persona-status" id="contextStatus"></div>
+            </div>
+            <!-- 上下文文件编辑弹窗 -->
+            <div class="modal-overlay" id="contextEditOverlay" style="position:fixed;">
+                <div class="modal modal-wide">
+                    <h3 id="contextEditTitle">编辑上下文文件</h3>
+                    <textarea id="contextEditContent" style="min-height:200px;" placeholder="输入上下文文件内容..."></textarea>
+                    <div class="persona-status" id="contextEditStatus"></div>
+                    <div class="modal-actions">
+                        <button class="modal-btn danger" id="contextDeleteBtn">删除</button>
+                        <button class="modal-btn cancel" id="contextEditCancelBtn">取消</button>
+                        <button class="modal-btn confirm" id="contextEditSaveBtn">保存</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions" id="personaModalActions">
                 <button class="modal-btn cancel" id="personaResetBtn">恢复默认</button>
                 <button class="modal-btn cancel" id="personaCancelBtn">取消</button>
                 <button class="modal-btn confirm" id="personaSaveBtn">保存</button>
@@ -1133,6 +1165,18 @@
             });
             personaModal.addEventListener('click', (e) => {
                 if (e.target === personaModal) closePersonaModal();
+            });
+
+            // Tab 切换
+            document.getElementById('tabPersona').addEventListener('click', () => switchPersonaTab('persona'));
+            document.getElementById('tabContext').addEventListener('click', () => switchPersonaTab('context'));
+
+            // 上下文文件编辑弹窗
+            document.getElementById('contextEditCancelBtn').addEventListener('click', closeContextEditOverlay);
+            document.getElementById('contextEditSaveBtn').addEventListener('click', handleContextEditSave);
+            document.getElementById('contextDeleteBtn').addEventListener('click', handleContextEditDelete);
+            document.getElementById('contextEditOverlay').addEventListener('click', (e) => {
+                if (e.target.id === 'contextEditOverlay') closeContextEditOverlay();
             });
         }
 
@@ -1379,6 +1423,178 @@
             } finally {
                 personaSaveBtn.disabled = false;
             }
+        }
+
+        // ── Tab 切换 ──
+
+        function switchPersonaTab(tab) {
+            const tabPersona = document.getElementById('tabPersona');
+            const tabContext = document.getElementById('tabContext');
+            const personaTabContent = document.getElementById('personaTabContent');
+            const contextTabContent = document.getElementById('contextTabContent');
+            const personaModalActions = document.getElementById('personaModalActions');
+
+            if (tab === 'persona') {
+                tabPersona.style.background = 'var(--accent)';
+                tabPersona.style.color = '#fff';
+                tabContext.style.background = 'var(--surface-elevated)';
+                tabContext.style.color = 'var(--text)';
+                personaTabContent.style.display = 'block';
+                contextTabContent.style.display = 'none';
+                personaModalActions.style.display = 'flex';
+            } else {
+                tabContext.style.background = 'var(--accent)';
+                tabContext.style.color = '#fff';
+                tabPersona.style.background = 'var(--surface-elevated)';
+                tabPersona.style.color = 'var(--text)';
+                personaTabContent.style.display = 'none';
+                contextTabContent.style.display = 'block';
+                personaModalActions.style.display = 'none';
+                loadContextFiles();
+            }
+        }
+
+        // ── 上下文文件管理 ──
+
+        let editingContextFileName = null;
+
+        async function loadContextFiles() {
+            if (!currentSessionId) {
+                document.getElementById('contextFileList').innerHTML = '<p style="color:var(--text-tertiary);font-size:13px;">请先选择一个会话</p>';
+                return;
+            }
+            const statusEl = document.getElementById('contextStatus');
+            statusEl.textContent = '加载中...';
+            statusEl.className = 'persona-status';
+            try {
+                const r = await fetch(`${API_BASE}/${currentSessionId}/context`);
+                if (r.ok) {
+                    const data = await r.json();
+                    renderContextFileList(data.files || []);
+                    statusEl.textContent = '';
+                } else {
+                    statusEl.textContent = '加载失败';
+                    statusEl.className = 'persona-status error';
+                }
+            } catch (e) {
+                statusEl.textContent = '加载失败: ' + e.message;
+                statusEl.className = 'persona-status error';
+            }
+        }
+
+        function renderContextFileList(files) {
+            const listEl = document.getElementById('contextFileList');
+            if (files.length === 0) {
+                listEl.innerHTML = '<p style="color:var(--text-tertiary);font-size:13px;">暂无上下文文件，点击下方按钮创建</p>';
+                return;
+            }
+            listEl.innerHTML = files.map(f => `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px;">
+                    <span style="font-size:13px;font-family:'SF Mono',monospace;font-weight:500;">${escapeHtml(f.name)}</span>
+                    <div style="display:flex;gap:4px;">
+                        <button class="action-btn" onclick="editContextFile('${escapeHtml(f.name)}')" style="font-size:11px;padding:2px 8px;">编辑</button>
+                        <button class="action-btn" onclick="deleteContextFile('${escapeHtml(f.name)}')" style="font-size:11px;padding:2px 8px;color:var(--error);">删除</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function createContextFile(fileName) {
+            if (!currentSessionId) {
+                document.getElementById('contextStatus').textContent = '请先选择会话';
+                document.getElementById('contextStatus').className = 'persona-status error';
+                return;
+            }
+            editingContextFileName = fileName;
+            document.getElementById('contextEditTitle').textContent = '创建 ' + fileName;
+            document.getElementById('contextEditContent').value = '';
+            document.getElementById('contextEditStatus').textContent = '';
+            document.getElementById('contextEditOverlay').classList.add('visible');
+            setTimeout(() => document.getElementById('contextEditContent').focus(), 100);
+        }
+
+        async function editContextFile(fileName) {
+            if (!currentSessionId) return;
+            editingContextFileName = fileName;
+            document.getElementById('contextEditTitle').textContent = '编辑 ' + fileName;
+            document.getElementById('contextEditContent').value = '(加载中...)';
+            document.getElementById('contextEditStatus').textContent = '';
+            document.getElementById('contextEditOverlay').classList.add('visible');
+            try {
+                const r = await fetch(`${API_BASE}/${currentSessionId}/context/${encodeURIComponent(fileName)}`);
+                if (r.ok) {
+                    const data = await r.json();
+                    document.getElementById('contextEditContent').value = data.content || '';
+                }
+            } catch (e) {
+                document.getElementById('contextEditStatus').textContent = '加载失败: ' + e.message;
+                document.getElementById('contextEditStatus').className = 'persona-status error';
+            }
+        }
+
+        async function handleContextEditSave() {
+            if (!currentSessionId || !editingContextFileName) return;
+            const content = document.getElementById('contextEditContent').value;
+            const saveBtn = document.getElementById('contextEditSaveBtn');
+            saveBtn.disabled = true;
+            document.getElementById('contextEditStatus').textContent = '保存中...';
+            document.getElementById('contextEditStatus').className = 'persona-status';
+            try {
+                const r = await fetch(`${API_BASE}/${currentSessionId}/context/${encodeURIComponent(editingContextFileName)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                const data = await r.json();
+                if (r.ok && data.success) {
+                    document.getElementById('contextEditStatus').textContent = '已保存';
+                    document.getElementById('contextEditStatus').className = 'persona-status ok';
+                    setTimeout(() => {
+                        closeContextEditOverlay();
+                        loadContextFiles();
+                    }, 600);
+                } else {
+                    document.getElementById('contextEditStatus').textContent = data.error || '保存失败';
+                    document.getElementById('contextEditStatus').className = 'persona-status error';
+                }
+            } catch (e) {
+                document.getElementById('contextEditStatus').textContent = '保存失败: ' + e.message;
+                document.getElementById('contextEditStatus').className = 'persona-status error';
+            } finally {
+                saveBtn.disabled = false;
+            }
+        }
+
+        async function handleContextEditDelete() {
+            if (!currentSessionId || !editingContextFileName) return;
+            if (!confirm('确定删除 ' + editingContextFileName + '？')) return;
+            try {
+                const r = await fetch(`${API_BASE}/${currentSessionId}/context/${encodeURIComponent(editingContextFileName)}`, { method: 'DELETE' });
+                if (r.ok) {
+                    closeContextEditOverlay();
+                    loadContextFiles();
+                }
+            } catch (e) {
+                document.getElementById('contextEditStatus').textContent = '删除失败: ' + e.message;
+                document.getElementById('contextEditStatus').className = 'persona-status error';
+            }
+        }
+
+        async function deleteContextFile(fileName) {
+            if (!currentSessionId) return;
+            if (!confirm('确定删除 ' + fileName + '？')) return;
+            try {
+                const r = await fetch(`${API_BASE}/${currentSessionId}/context/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+                if (r.ok) loadContextFiles();
+            } catch (e) {
+                document.getElementById('contextStatus').textContent = '删除失败: ' + e.message;
+                document.getElementById('contextStatus').className = 'persona-status error';
+            }
+        }
+
+        function closeContextEditOverlay() {
+            document.getElementById('contextEditOverlay').classList.remove('visible');
+            editingContextFileName = null;
         }
 
         function updateSessionInfo() {

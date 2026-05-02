@@ -6,8 +6,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.nio.file.Path;
-
 /**
  * 系统提示构建器。
  * 组装智能体身份、上下文文件发现、长期记忆和配置的默认提示词。
@@ -30,20 +28,30 @@ public class PromptBuilder {
     }
 
     /**
-     * 构建系统提示。
-     * 组装顺序：智能体身份 → 上下文文件发现 → 长期记忆快照 → 配置的默认提示词（兜底）。
+     * 构建系统提示（无会话，向后兼容）。
      *
      * @return 完整的系统提示文本
      */
     public String buildSystemPrompt() {
+        return buildSystemPrompt(null);
+    }
+
+    /**
+     * 构建系统提示（基于会话）。
+     * 组装顺序：智能体身份 → 上下文文件发现（会话维度）→ 长期记忆快照 → 配置的默认提示词（兜底）。
+     *
+     * @param sessionId 会话 ID，用于定位会话级上下文文件
+     * @return 完整的系统提示文本
+     */
+    public String buildSystemPrompt(String sessionId) {
         StringBuilder prompt = new StringBuilder();
 
         // 1. 智能体身份（SOUL.md 或配置的默认提示词）
         String soulMd = ContextFileDiscovery.loadSoulMd();
         prompt.append(!soulMd.isEmpty() ? soulMd : defaultSystemPrompt);
 
-        // 2. 上下文文件发现
-        String contextPrompt = ContextFileDiscovery.buildContextFilesPrompt(Path.of(System.getProperty("user.dir")));
+        // 2. 上下文文件发现（会话感知）
+        String contextPrompt = ContextFileDiscovery.buildContextFilesPrompt(sessionId);
         if (!contextPrompt.isEmpty()) {
             prompt.append("\n\n").append(contextPrompt);
         }
@@ -55,7 +63,7 @@ public class PromptBuilder {
         }
 
         String result = prompt.toString();
-        log.debug("System prompt built: {} chars", result.length());
+        log.debug("System prompt built (sessionId={}): {} chars", sessionId, result.length());
         return result;
     }
 }

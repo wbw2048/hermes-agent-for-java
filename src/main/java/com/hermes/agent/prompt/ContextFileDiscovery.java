@@ -11,15 +11,17 @@ import java.util.Comparator;
 /**
  * 上下文文件发现。
  * <p>
- * 按优先级搜索项目上下文文件，加载内容并做注入防护扫描和截断后拼入系统提示。
+ * 按会话维度搜索上下文文件，每个会话拥有独立的上下文空间。
+ * 搜索路径：~/.hermes/contexts/&lt;session-id&gt;/ → SOUL.md（全局）。
+ * <p>
  * 优先级（首个匹配胜出，仅加载一种项目上下文）：
  * <ol>
- *   <li>.hermes.md / HERMES.md（从 cwd 向上搜索到 git 根）</li>
- *   <li>AGENTS.md / agents.md（仅 cwd）</li>
- *   <li>CLAUDE.md / claude.md（仅 cwd）</li>
- *   <li>.cursorrules + .cursor/rules/*.mdc（仅 cwd）</li>
+ *   <li>.hermes.md / HERMES.md</li>
+ *   <li>AGENTS.md / agents.md</li>
+ *   <li>CLAUDE.md / claude.md</li>
+ *   <li>.cursorrules + .cursor/rules/*.mdc</li>
  * </ol>
- * SOUL.md 从 HERMES_HOME 加载，独立于项目上下文。
+ * SOUL.md 从 HERMES_HOME 全局目录加载，独立于会话上下文。
  */
 public class ContextFileDiscovery {
 
@@ -27,96 +29,95 @@ public class ContextFileDiscovery {
     private static final PromptInjectionDetector detector = new PromptInjectionDetector();
     private static final ContextFileTruncator truncator = new ContextFileTruncator();
 
+    private static final String CONTEXTS_DIR = "contexts";
+
     private ContextFileDiscovery() {}
 
-    // ========== Git Root Discovery ==========
+    // ========== Session Context Directory ==========
 
     /**
-     * 从起点逐层向上查找 .git 目录，返回包含 .git 的目录。
+     * 解析会话上下文目录：HERMES_HOME/contexts/&lt;session-id&gt;/
+     * 若目录不存在且 createIfMissing 为 true，则创建。
      */
-    static Path findGitRoot(Path start) {
-        Path current = start.toAbsolutePath().normalize();
-        while (current != null) {
-            if (Files.isDirectory(current.resolve(".git"))) {
-                return current;
-            }
-            current = current.getParent();
+    public static Path resolveSessionContextDir(String sessionId, boolean createIfMissing) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
         }
-        return null;
+        Path hermesHome = resolveHermesHome();
+        Path sessionDir = hermesHome.resolve(CONTEXTS_DIR).resolve(sessionId);
+        if (createIfMissing && !Files.isDirectory(sessionDir)) {
+            try {
+                Files.createDirectories(sessionDir);
+            } catch (IOException e) {
+                log.warn("Could not create session context dir: {}", sessionDir);
+                return null;
+            }
+        }
+        return sessionDir;
     }
 
-    // ========== .hermes.md / HERMES.md ==========
+    // ========== Single-Directory Loaders ==========
 
     /**
-     * 在 cwd → git root 范围内查找 .hermes.md 或 HERMES.md。
+     * 在指定目录中按优先级查找 .hermes.md / HERMES.md。
      */
-    static String loadHermesMd(Path cwd) {
-        Path gitRoot = findGitRoot(cwd);
-        Path current = cwd.toAbsolutePath().normalize();
-
-        while (true) {
-            for (String name : new String[]{".hermes.md", "HERMES.md"}) {
-                Path candidate = current.resolve(name);
-                if (Files.isRegularFile(candidate)) {
-                    return readFile(candidate, name, cwd);
-                }
+    static String loadHermesMdFromDir(Path dir) {
+        for (String name : new String[]{".hermes.md", "HERMES.md"}) {
+            Path candidate = dir.resolve(name);
+            if (Files.isRegularFile(candidate)) {
+                return readFile(candidate, name, dir);
             }
-            if (gitRoot != null && current.equals(gitRoot)) {
-                break;
-            }
-            Path parent = current.getParent();
-            if (parent == null || parent.equals(current)) {
-                break;
-            }
-            current = parent;
         }
         return "";
     }
 
-    // ========== AGENTS.md ==========
-
-    static String loadAgentsMd(Path cwd) {
+    /**
+     * 在指定目录中查找 AGENTS.md / agents.md。
+     */
+    static String loadAgentsMdFromDir(Path dir) {
         for (String name : new String[]{"AGENTS.md", "agents.md"}) {
-            Path candidate = cwd.resolve(name);
+            Path candidate = dir.resolve(name);
             if (Files.isRegularFile(candidate)) {
-                return readFile(candidate, name, cwd);
+                return readFile(candidate, name, dir);
             }
         }
         return "";
     }
 
-    // ========== CLAUDE.md ==========
-
-    static String loadClaudeMd(Path cwd) {
+    /**
+     * 在指定目录中查找 CLAUDE.md / claude.md。
+     */
+    static String loadClaudeMdFromDir(Path dir) {
         for (String name : new String[]{"CLAUDE.md", "claude.md"}) {
-            Path candidate = cwd.resolve(name);
+            Path candidate = dir.resolve(name);
             if (Files.isRegularFile(candidate)) {
-                return readFile(candidate, name, cwd);
+                return readFile(candidate, name, dir);
             }
         }
         return "";
     }
 
-    // ========== .cursorrules + .cursor/rules/*.mdc ==========
-
-    static String loadCursorRules(Path cwd) {
+    /**
+     * 在指定目录中查找 .cursorrules + .cursor/rules/*.mdc。
+     */
+    static String loadCursorRulesFromDir(Path dir) {
         StringBuilder sb = new StringBuilder();
 
-        Path cursorrules = cwd.resolve(".cursorrules");
+        Path cursorrules = dir.resolve(".cursorrules");
         if (Files.isRegularFile(cursorrules)) {
-            String content = readRawFile(cursorrules, ".cursorrules", cwd);
+            String content = readRawFile(cursorrules, ".cursorrules", dir);
             if (!content.isEmpty()) {
                 sb.append("## .cursorrules\n\n").append(content).append("\n\n");
             }
         }
 
-        Path cursorRulesDir = cwd.resolve(".cursor").resolve("rules");
+        Path cursorRulesDir = dir.resolve(".cursor").resolve("rules");
         if (Files.isDirectory(cursorRulesDir)) {
             try (var stream = Files.list(cursorRulesDir)) {
                 stream.filter(p -> p.toString().endsWith(".mdc"))
                     .sorted(Comparator.naturalOrder())
                     .forEach(mdcFile -> {
-                        String content = readRawFile(mdcFile, ".cursor/rules/" + mdcFile.getFileName(), cwd);
+                        String content = readRawFile(mdcFile, ".cursor/rules/" + mdcFile.getFileName(), dir);
                         if (!content.isEmpty()) {
                             sb.append("## .cursor/rules/").append(mdcFile.getFileName()).append("\n\n").append(content).append("\n\n");
                         }
@@ -188,50 +189,91 @@ public class ContextFileDiscovery {
     // ========== Main Entry Point ==========
 
     /**
-     * 发现并加载上下文文件，返回组合后的项目上下文字符串。
+     * 基于会话发现并加载上下文文件（测试用，支持自定义 HERMES_HOME）。
      *
-     * @param cwd 当前工作目录
-     * @return 项目上下文提示文本，无上下文文件时返回空字符串
+     * @param sessionId        会话 ID
+     * @param hermesHomeOverride 自定义 HERMES_HOME 路径
+     * @return 组合后的上下文提示文本
      */
-    public static String buildContextFilesPrompt(Path cwd) {
-        Path cwdPath = cwd.toAbsolutePath().normalize();
-        StringBuilder sections = new StringBuilder();
-
-        // 优先级：first match wins
-        String projectContext = loadHermesMd(cwdPath);
-        if (projectContext.isEmpty()) {
-            projectContext = loadAgentsMd(cwdPath);
-        }
-        if (projectContext.isEmpty()) {
-            projectContext = loadClaudeMd(cwdPath);
-        }
-        if (projectContext.isEmpty()) {
-            projectContext = loadCursorRules(cwdPath);
+    static String buildContextFilesPrompt(String sessionId, Path hermesHomeOverride) {
+        if (sessionId == null || sessionId.isBlank()) {
+            String soulMd = loadSoulMdFrom(hermesHomeOverride);
+            return soulMd.isEmpty() ? "" : "# Project Context\n\n" + soulMd;
         }
 
-        if (!projectContext.isEmpty()) {
-            sections.append(projectContext);
-        }
-
-        // SOUL.md 独立加载
-        String soulMd = loadSoulMd();
-        if (!soulMd.isEmpty()) {
-            if (!sections.isEmpty()) {
-                sections.append("\n\n");
+        Path sessionDir = hermesHomeOverride.resolve(CONTEXTS_DIR).resolve(sessionId);
+        if (Files.isDirectory(sessionDir)) {
+            String sessionContext = loadSessionContext(sessionDir);
+            if (!sessionContext.isEmpty()) {
+                String soulMd = loadSoulMdFrom(hermesHomeOverride);
+                if (!soulMd.isEmpty()) {
+                    return sessionContext + "\n\n" + soulMd;
+                }
+                return sessionContext;
             }
-            sections.append(soulMd);
         }
 
-        if (sections.isEmpty()) {
+        String soulMd = loadSoulMdFrom(hermesHomeOverride);
+        return soulMd.isEmpty() ? "" : "# Project Context\n\n" + soulMd;
+    }
+
+    /**
+     * 基于会话发现并加载上下文文件。
+     *
+     * @param sessionId 会话 ID，为空时仅加载 SOUL.md
+     * @return 组合后的上下文提示文本，无上下文文件时返回空字符串
+     */
+    public static String buildContextFilesPrompt(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            String soulMd = loadSoulMd();
+            return soulMd.isEmpty() ? "" : "# Project Context\n\n" + soulMd;
+        }
+
+        // 尝试从会话目录加载
+        Path sessionDir = resolveSessionContextDir(sessionId, false);
+        if (sessionDir != null && Files.isDirectory(sessionDir)) {
+            String sessionContext = loadSessionContext(sessionDir);
+            if (!sessionContext.isEmpty()) {
+                // 会话级上下文 + SOUL.md
+                String soulMd = loadSoulMd();
+                if (!soulMd.isEmpty()) {
+                    return sessionContext + "\n\n" + soulMd;
+                }
+                return sessionContext;
+            }
+        }
+
+        // 会话目录无上下文文件：仅加载 SOUL.md
+        String soulMd = loadSoulMd();
+        return soulMd.isEmpty() ? "" : "# Project Context\n\n" + soulMd;
+    }
+
+    /**
+     * 从会话目录加载所有上下文文件（first match wins）。
+     */
+    private static String loadSessionContext(Path sessionDir) {
+        // 优先级：.hermes.md → AGENTS.md → CLAUDE.md → .cursorrules
+        String projectContext = loadHermesMdFromDir(sessionDir);
+        if (projectContext.isEmpty()) {
+            projectContext = loadAgentsMdFromDir(sessionDir);
+        }
+        if (projectContext.isEmpty()) {
+            projectContext = loadClaudeMdFromDir(sessionDir);
+        }
+        if (projectContext.isEmpty()) {
+            projectContext = loadCursorRulesFromDir(sessionDir);
+        }
+
+        if (projectContext.isEmpty()) {
             return "";
         }
-        return "# Project Context\n\nThe following project context files have been loaded and should be followed:\n\n" + sections;
+        return "# Project Context\n\nThe following project context files have been loaded and should be followed:\n\n" + projectContext;
     }
 
     // ========== Helpers ==========
 
-    private static String readFile(Path path, String name, Path cwd) {
-        String content = readRawFile(path, name, cwd);
+    private static String readFile(Path path, String name, Path baseDir) {
+        String content = readRawFile(path, name, baseDir);
         if (content.isEmpty()) {
             return "";
         }
@@ -239,13 +281,13 @@ public class ContextFileDiscovery {
         return "## " + name + "\n\n" + result;
     }
 
-    private static String readRawFile(Path path, String name, Path cwd) {
+    private static String readRawFile(Path path, String name, Path baseDir) {
         try {
             String content = Files.readString(path).strip();
             if (content.isEmpty()) {
                 return "";
             }
-            String relName = computeRelativeName(path, cwd);
+            String relName = computeRelativeName(path, baseDir);
             content = stripYamlFrontmatter(content);
             content = detector.scanAndSanitize(content, relName);
             return content;
@@ -255,9 +297,9 @@ public class ContextFileDiscovery {
         }
     }
 
-    private static String computeRelativeName(Path path, Path cwd) {
+    private static String computeRelativeName(Path path, Path baseDir) {
         try {
-            return cwd.relativize(path).toString();
+            return baseDir.relativize(path).toString();
         } catch (IllegalArgumentException e) {
             return path.getFileName().toString();
         }

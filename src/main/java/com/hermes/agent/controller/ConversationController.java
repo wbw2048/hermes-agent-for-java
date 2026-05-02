@@ -3,6 +3,7 @@ package com.hermes.agent.controller;
 import com.hermes.agent.agent.SimpleAgent;
 import com.hermes.agent.entity.SessionEntity;
 import com.hermes.agent.memory.MemoryStore;
+import com.hermes.agent.prompt.ContextFileDiscovery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
@@ -12,6 +13,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -144,6 +148,8 @@ public class ConversationController {
     @DeleteMapping("/{sessionId}")
     public ResponseEntity<Map<String, String>> deleteSession(@PathVariable String sessionId) {
         simpleAgent.getSessionStorageService().deleteSession(sessionId);
+        // 清理会话上下文目录
+        deleteSessionContextDir(sessionId);
 
         Map<String, String> response = new HashMap<>();
         response.put("status", "success");
@@ -299,5 +305,26 @@ public class ConversationController {
         memoryStore.clear("memory");
         memoryStore.clear("user");
         return ResponseEntity.ok(Map.of("status", "success", "message", "all memory cleared"));
+    }
+
+    /**
+     * 删除会话上下文目录（~/.hermes/contexts/<session-id>/）。
+     */
+    private void deleteSessionContextDir(String sessionId) {
+        Path sessionDir = ContextFileDiscovery.resolveSessionContextDir(sessionId, false);
+        if (sessionDir == null || !Files.isDirectory(sessionDir)) {
+            return;
+        }
+        try {
+            java.nio.file.Files.walk(sessionDir)
+                .sorted(Comparator.reverseOrder())
+                .forEach(p -> {
+                    try { java.nio.file.Files.deleteIfExists(p); }
+                    catch (IOException ignored) {}
+                });
+            log.info("Session context directory deleted: {}", sessionDir);
+        } catch (IOException e) {
+            log.warn("Could not delete session context dir: {}", sessionDir);
+        }
     }
 }

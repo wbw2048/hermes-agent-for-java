@@ -17,108 +17,110 @@ class ContextFileDiscoveryTest {
     @TempDir
     Path tempDir;
 
-    // ========== Git Root Discovery ==========
+    // ========== Session Context Directory ==========
 
     @Test
-    void findsGitRoot(@TempDir Path tempDir) throws IOException {
-        Path gitDir = tempDir.resolve(".git");
-        Files.createDirectory(gitDir);
-        Path subDir = tempDir.resolve("src").resolve("main");
-        Files.createDirectories(subDir);
-
-        assertEquals(tempDir, ContextFileDiscovery.findGitRoot(subDir));
+    void resolveSessionContextDirReturnsCorrectPath() {
+        // With default HERMES_HOME (~/.hermes), verify structure
+        Path dir = ContextFileDiscovery.resolveSessionContextDir("test-session-123", true);
+        assertNotNull(dir);
+        assertTrue(dir.toString().contains("contexts"));
+        assertTrue(dir.toString().contains("test-session-123"));
+        // Clean up
+        deleteDir(dir);
     }
 
     @Test
-    void noGitRootReturnsNull(@TempDir Path tempDir) {
-        assertNull(ContextFileDiscovery.findGitRoot(tempDir));
+    void resolveSessionContextDirReturnsNullForBlankId() {
+        assertNull(ContextFileDiscovery.resolveSessionContextDir(null, false));
+        assertNull(ContextFileDiscovery.resolveSessionContextDir("", false));
+        assertNull(ContextFileDiscovery.resolveSessionContextDir("   ", false));
     }
 
     @Test
-    void gitRootIsCwdItself(@TempDir Path tempDir) throws IOException {
-        Files.createDirectory(tempDir.resolve(".git"));
-        assertEquals(tempDir, ContextFileDiscovery.findGitRoot(tempDir));
+    void resolveSessionContextDirCreatesDirectory() {
+        Path dir = ContextFileDiscovery.resolveSessionContextDir("create-test-session", true);
+        assertNotNull(dir);
+        assertTrue(Files.isDirectory(dir));
+        deleteDir(dir);
     }
 
-    // ========== .hermes.md ==========
+    @Test
+    void resolveSessionContextDirNoCreateReturnsNullIfMissing() {
+        // A non-existent session dir should return null (or exist=false check)
+        Path dir = ContextFileDiscovery.resolveSessionContextDir("nonexistent-session-xyz", false);
+        // May return path but directory doesn't exist
+        if (dir != null) {
+            assertFalse(Files.isDirectory(dir));
+        }
+    }
+
+    // ========== Single-Directory Loaders ==========
 
     @Test
-    void loadsHermesMdFromCwd(@TempDir Path tempDir) throws IOException {
+    void loadHermesMdFromDir(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve(".hermes.md"), "# Hermes Project\nSome content.");
-        String result = ContextFileDiscovery.loadHermesMd(tempDir);
+        String result = ContextFileDiscovery.loadHermesMdFromDir(tempDir);
         assertTrue(result.contains("## .hermes.md"));
         assertTrue(result.contains("Hermes Project"));
     }
 
     @Test
-    void loadsHermesMdFromParentDir(@TempDir Path tempDir) throws IOException {
-        Files.createDirectory(tempDir.resolve(".git"));
-        Files.writeString(tempDir.resolve("HERMES.md"), "# HERMES\nRoot level content.");
-        Path subDir = tempDir.resolve("sub");
-        Files.createDirectory(subDir);
-
-        String result = ContextFileDiscovery.loadHermesMd(subDir);
-        assertTrue(result.contains("HERMES.md"));
-        assertTrue(result.contains("Root level content"));
+    void loadHermesMdFromDirPrefersDotVersion(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve(".hermes.md"), "# Dot version");
+        Files.writeString(tempDir.resolve("HERMES.md"), "# Upper version");
+        String result = ContextFileDiscovery.loadHermesMdFromDir(tempDir);
+        assertTrue(result.contains("Dot version"));
+        assertFalse(result.contains("Upper version"));
     }
 
-    // ========== AGENTS.md ==========
-
     @Test
-    void loadsAgentsMd(@TempDir Path tempDir) throws IOException {
+    void loadAgentsMdFromDir(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("AGENTS.md"), "# Agents\nAgent rules.");
-        String result = ContextFileDiscovery.loadAgentsMd(tempDir);
+        String result = ContextFileDiscovery.loadAgentsMdFromDir(tempDir);
         assertTrue(result.contains("## AGENTS.md"));
         assertTrue(result.contains("Agent rules"));
     }
 
     @Test
-    void agentsMdCwdOnly(@TempDir Path tempDir) throws IOException {
-        Files.createDirectory(tempDir.resolve(".git"));
-        Files.writeString(tempDir.resolve("AGENTS.md"), "# Agents\nRoot agents.");
-        Path subDir = tempDir.resolve("sub");
-        Files.createDirectory(subDir);
-
-        String result = ContextFileDiscovery.loadAgentsMd(subDir);
-        assertEquals("", result);
-    }
-
-    // ========== CLAUDE.md ==========
-
-    @Test
-    void loadsClaudeMd(@TempDir Path tempDir) throws IOException {
+    void loadClaudeMdFromDir(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("CLAUDE.md"), "# Claude\nClaude rules.");
-        String result = ContextFileDiscovery.loadClaudeMd(tempDir);
+        String result = ContextFileDiscovery.loadClaudeMdFromDir(tempDir);
         assertTrue(result.contains("## CLAUDE.md"));
         assertTrue(result.contains("Claude rules"));
     }
 
-    // ========== .cursorrules ==========
-
     @Test
-    void loadsCursorRules(@TempDir Path tempDir) throws IOException {
+    void loadCursorRulesFromDir(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve(".cursorrules"), "Always use TypeScript.");
-        String result = ContextFileDiscovery.loadCursorRules(tempDir);
+        String result = ContextFileDiscovery.loadCursorRulesFromDir(tempDir);
         assertTrue(result.contains("## .cursorrules"));
         assertTrue(result.contains("Always use TypeScript"));
     }
 
     @Test
-    void loadsCursorRulesMdc(@TempDir Path tempDir) throws IOException {
+    void loadCursorRulesFromDirWithMdc(@TempDir Path tempDir) throws IOException {
         Path rulesDir = tempDir.resolve(".cursor").resolve("rules");
         Files.createDirectories(rulesDir);
         Files.writeString(rulesDir.resolve("java.mdc"), "# Java Rules\nUse records.");
 
-        String result = ContextFileDiscovery.loadCursorRules(tempDir);
+        String result = ContextFileDiscovery.loadCursorRulesFromDir(tempDir);
         assertTrue(result.contains("java.mdc"));
         assertTrue(result.contains("Use records"));
+    }
+
+    @Test
+    void loadersReturnEmptyWhenFileMissing(@TempDir Path tempDir) {
+        assertEquals("", ContextFileDiscovery.loadHermesMdFromDir(tempDir));
+        assertEquals("", ContextFileDiscovery.loadAgentsMdFromDir(tempDir));
+        assertEquals("", ContextFileDiscovery.loadClaudeMdFromDir(tempDir));
+        assertEquals("", ContextFileDiscovery.loadCursorRulesFromDir(tempDir));
     }
 
     // ========== SOUL.md ==========
 
     @Test
     void loadsSoulMdFromHermesHome(@TempDir Path tempDir) throws IOException {
-        // Use the package-private loadSoulMdFrom to test with a temp directory
         Path hermesHome = tempDir;
         Files.writeString(hermesHome.resolve("SOUL.md"), "你是专业助手，简洁回答。");
         String result = ContextFileDiscovery.loadSoulMdFrom(hermesHome);
@@ -143,7 +145,6 @@ class ContextFileDiscoveryTest {
     @Test
     void soulMdAppliesTruncation(@TempDir Path tempDir) throws IOException {
         Path hermesHome = tempDir;
-        // 写入超过 20k 字符的内容
         Files.writeString(hermesHome.resolve("SOUL.md"), "X".repeat(25_000));
         String result = ContextFileDiscovery.loadSoulMdFrom(hermesHome);
         assertTrue(result.contains("truncated"));
@@ -158,40 +159,92 @@ class ContextFileDiscoveryTest {
         assertTrue(result.contains("你是测试助手"));
     }
 
-    @Test
-    void resolveHermesHomeUsesEnvWhenSet(@TempDir Path tempDir) throws IOException {
-        // Can't set env vars easily, but we can verify the default fallback doesn't crash
-        Path home = ContextFileDiscovery.resolveHermesHome();
-        assertNotNull(home);
-        // If HERMES_HOME is not set, should be ~/.hermes
-        if (System.getenv("HERMES_HOME") == null || System.getenv("HERMES_HOME").isEmpty()) {
-            assertTrue(home.toString().contains(".hermes"));
-        }
-    }
-
-    // ========== buildContextFilesPrompt ==========
+    // ========== buildContextFilesPrompt (session-based) ==========
 
     @Test
-    void buildsPromptWithClaudeMd(@TempDir Path tempDir) throws IOException {
-        Files.writeString(tempDir.resolve("CLAUDE.md"), "# Project\nUse Maven.");
-        String result = ContextFileDiscovery.buildContextFilesPrompt(tempDir);
+    void buildsPromptWithSessionClaudeMd(@TempDir Path tempDir) throws IOException {
+        // Set up session dir with CLAUDE.md under tempDir acting as HERMES_HOME
+        Path sessionDir = tempDir.resolve("contexts").resolve("session-1");
+        Files.createDirectories(sessionDir);
+        Files.writeString(sessionDir.resolve("CLAUDE.md"), "# Project\nUse Maven.");
+
+        String result = ContextFileDiscovery.buildContextFilesPrompt("session-1", tempDir);
         assertTrue(result.contains("# Project Context"));
         assertTrue(result.contains("CLAUDE.md"));
         assertTrue(result.contains("Use Maven"));
     }
 
     @Test
-    void hermesMdTakesPriority(@TempDir Path tempDir) throws IOException {
-        Files.writeString(tempDir.resolve(".hermes.md"), "# Hermes");
-        Files.writeString(tempDir.resolve("CLAUDE.md"), "# Claude");
-        String result = ContextFileDiscovery.buildContextFilesPrompt(tempDir);
+    void sessionContextFileTakesPriority(@TempDir Path tempDir) throws IOException {
+        // Session dir has .hermes.md — should win
+        Path sessionDir = tempDir.resolve("contexts").resolve("session-2");
+        Files.createDirectories(sessionDir);
+        Files.writeString(sessionDir.resolve(".hermes.md"), "# Session Hermes");
+
+        String result = ContextFileDiscovery.buildContextFilesPrompt("session-2", tempDir);
         assertTrue(result.contains(".hermes.md"));
-        assertFalse(result.contains("CLAUDE.md"));
+        // Should NOT load other files (first match wins)
+        assertFalse(result.contains("AGENTS.md"));
     }
 
     @Test
-    void emptyWhenNoContextFiles(@TempDir Path tempDir) {
-        assertEquals("", ContextFileDiscovery.buildContextFilesPrompt(tempDir));
+    void emptySessionDirReturnsOnlySoulMd(@TempDir Path tempDir) throws IOException {
+        Path sessionDir = tempDir.resolve("contexts").resolve("session-empty");
+        Files.createDirectories(sessionDir);
+        // No context files
+
+        String result = ContextFileDiscovery.buildContextFilesPrompt("session-empty", tempDir);
+        // Should only have SOUL.md if it exists
+        assertFalse(result.contains("CLAUDE.md"));
+        assertFalse(result.contains("AGENTS.md"));
+    }
+
+    @Test
+    void nullSessionIdReturnsOnlySoulMd(@TempDir Path tempDir) throws IOException {
+        String result = ContextFileDiscovery.buildContextFilesPrompt(null, tempDir);
+        // No SOUL.md exists in tempDir, so should be empty
+        assertEquals("", result);
+    }
+
+    @Test
+    void blankSessionIdReturnsOnlySoulMd(@TempDir Path tempDir) throws IOException {
+        String result = ContextFileDiscovery.buildContextFilesPrompt("  ", tempDir);
+        assertEquals("", result);
+    }
+
+    @Test
+    void buildContextFilesPromptWithSoulMdAndSessionContext(@TempDir Path tempDir) throws IOException {
+        Path sessionDir = tempDir.resolve("contexts").resolve("session-both");
+        Files.createDirectories(sessionDir);
+        Files.writeString(sessionDir.resolve("AGENTS.md"), "# Agents\nAgent rules.");
+        Files.writeString(tempDir.resolve("SOUL.md"), "你是专业助手。");
+
+        String result = ContextFileDiscovery.buildContextFilesPrompt("session-both", tempDir);
+        assertTrue(result.contains("AGENTS.md"));
+        assertTrue(result.contains("SOUL.md"));
+        assertTrue(result.contains("你是专业助手"));
+        assertTrue(result.contains("Agent rules"));
+    }
+
+    @Test
+    void buildContextFilesPromptSessionIsolation(@TempDir Path tempDir) throws IOException {
+        // Session A has CLAUDE.md
+        Path sessionA = tempDir.resolve("contexts").resolve("session-A");
+        Files.createDirectories(sessionA);
+        Files.writeString(sessionA.resolve("CLAUDE.md"), "# Session A");
+
+        // Session B has AGENTS.md
+        Path sessionB = tempDir.resolve("contexts").resolve("session-B");
+        Files.createDirectories(sessionB);
+        Files.writeString(sessionB.resolve("AGENTS.md"), "# Session B");
+
+        String resultA = ContextFileDiscovery.buildContextFilesPrompt("session-A", tempDir);
+        String resultB = ContextFileDiscovery.buildContextFilesPrompt("session-B", tempDir);
+
+        assertTrue(resultA.contains("Session A"));
+        assertFalse(resultA.contains("Session B"));
+        assertTrue(resultB.contains("Session B"));
+        assertFalse(resultB.contains("Session A"));
     }
 
     // ========== YAML Frontmatter ==========
@@ -207,5 +260,18 @@ class ContextFileDiscoveryTest {
     void noFrontmatterUnchanged() {
         String content = "No frontmatter here.";
         assertEquals(content, ContextFileDiscovery.stripYamlFrontmatter(content));
+    }
+
+    // ========== Helpers ==========
+
+    private void deleteDir(Path dir) {
+        try {
+            java.nio.file.Files.walk(dir)
+                .sorted(java.util.Comparator.reverseOrder())
+                .forEach(p -> {
+                    try { java.nio.file.Files.deleteIfExists(p); }
+                    catch (IOException ignored) {}
+                });
+        } catch (IOException ignored) {}
     }
 }

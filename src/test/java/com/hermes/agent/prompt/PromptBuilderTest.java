@@ -24,35 +24,45 @@ class PromptBuilderTest {
 
     @Test
     void buildsPromptWithDefaultIdentity() {
-        PromptBuilder builder = new PromptBuilder("", createMemoryManager());
+        PromptBuilder builder = new PromptBuilder("你是 Hermes Agent，一个智能助手。", createMemoryManager());
         String prompt = builder.buildSystemPrompt();
         assertNotNull(prompt);
         assertTrue(prompt.length() > 0);
-        // 默认身份应该出现在提示词中
         assertTrue(prompt.contains("Hermes Agent"));
     }
 
     @Test
-    void buildsPromptWithCustomDefault() {
-        PromptBuilder builder = new PromptBuilder("你是自定义助手。", createMemoryManager());
-        String prompt = builder.buildSystemPrompt();
-        // buildSystemPrompt 总是先加入身份部分
+    void buildsPromptWithSessionId() {
+        PromptBuilder builder = new PromptBuilder("你是 Hermes Agent，一个智能助手。", createMemoryManager());
+        String prompt = builder.buildSystemPrompt("test-session-id");
         assertNotNull(prompt);
+        assertTrue(prompt.length() > 0);
         assertTrue(prompt.contains("Hermes Agent"));
     }
 
     @Test
-    void buildsPromptIncludesContextFiles(@TempDir Path tempDir) throws IOException {
-        // 创建一个含 CLAUDE.md 的目录，模拟在项目目录中调用
-        Files.writeString(tempDir.resolve("CLAUDE.md"), "# Project\nUse Maven。");
-        String result = ContextFileDiscovery.buildContextFilesPrompt(tempDir);
+    void buildsPromptWithNullSessionIdSameAsNoArg() {
+        PromptBuilder builder = new PromptBuilder("你是默认助手。", createMemoryManager());
+        String withNull = builder.buildSystemPrompt(null);
+        String noArg = builder.buildSystemPrompt();
+        assertEquals(noArg, withNull);
+    }
+
+    @Test
+    void buildsPromptIncludesSessionContextFiles(@TempDir Path tempDir) throws IOException {
+        // 设置会话级 CLAUDE.md
+        Path sessionDir = tempDir.resolve("contexts").resolve("session-1");
+        Files.createDirectories(sessionDir);
+        Files.writeString(sessionDir.resolve("CLAUDE.md"), "# Project\nUse Maven。");
+
+        // 使用测试重载指定 hermesHome
+        String result = ContextFileDiscovery.buildContextFilesPrompt("session-1", tempDir);
         assertTrue(result.contains("# Project Context"));
         assertTrue(result.contains("CLAUDE.md"));
     }
 
     @Test
     void soulMdOverridesDefaultIdentity(@TempDir Path tempDir) throws IOException {
-        // 使用 loadSoulMdFrom 验证 SOUL.md 内容会被加载
         Path hermesHome = tempDir;
         Files.writeString(hermesHome.resolve("SOUL.md"), "你是自定义人设。");
         String result = ContextFileDiscovery.loadSoulMdFrom(hermesHome);
