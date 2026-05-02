@@ -76,3 +76,10 @@ hermes:
           enabled: true
     terminal:
       timeout-seconds: 60
+    error-handling:
+      llm-max-retries: 3
+      backoff-initial-ms: 1000
+      backoff-multiplier: 2.0
+      backoff-max-ms: 30000
+      tool-timeout-ms: 30000
+      tool-error-isolation-enabled: true

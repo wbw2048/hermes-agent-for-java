@@ -42,4 +42,14 @@ public record WsMessage(
     public static WsMessage error(String data) {
         return new WsMessage("error", null, null, data, null, null, null, null);
     }
+
+    /** 客户端 -> 服务端：恢复中断的对话 */
+    public static WsMessage resume(String sessionId) {
+        return new WsMessage("resume", sessionId, null, null, null, null, null, null);
+    }
+
+    /** 服务端 -> 客户端：对话已恢复 */
+    public static WsMessage resumed(String sessionId) {
+        return new WsMessage("resumed", sessionId, null, null, null, null, null, null);
+    }
 }

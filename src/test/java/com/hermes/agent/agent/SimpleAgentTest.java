@@ -4,7 +4,9 @@ import com.hermes.agent.compressor.ContextCompressor;
 import com.hermes.agent.compressor.TokenEstimator;
 import com.hermes.agent.compressor.ToolResultPruner;
 import com.hermes.agent.config.ContextCompressionProperties;
+import com.hermes.agent.config.ErrorHandlingProperties;
 import com.hermes.agent.controller.ToolCallTracker;
+import com.hermes.agent.error.ErrorClassifier;
 import com.hermes.agent.prompt.PromptBuilder;
 import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.tool.ToolSetManager;
@@ -61,12 +63,14 @@ class SimpleAgentTest {
     @Mock
     private SessionStorageService sessionStorageService;
 
+    @Mock
+    private LlmCallService llmCallService;
+
     private SimpleAgent agent;
 
     @BeforeEach
     void setUp() {
         when(chatClientBuilder.build()).thenReturn(chatClient);
-        when(chatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(anyString())).thenReturn(requestSpec);
         when(requestSpec.messages(any(List.class))).thenReturn(requestSpec);
         when(requestSpec.tools(any(Object[].class))).thenReturn(requestSpec);
@@ -84,6 +88,16 @@ class SimpleAgentTest {
         doNothing().when(sessionStorageService).deleteSession(anyString());
         when(sessionStorageService.getSession(anyString())).thenReturn(null);
         when(sessionStorageService.listSessions()).thenReturn(List.of());
+
+        // Default llmCallService behavior
+        when(assistantMessage.getText()).thenReturn("OK");
+        when(assistantMessage.getMessageType()).thenReturn(
+                org.springframework.ai.chat.messages.MessageType.ASSISTANT);
+        when(assistantMessage.getToolCalls()).thenReturn(null);
+        when(llmCallService.callLlmWithRetry(anyString(), anyList(), any(Object[].class)))
+                .thenReturn(assistantMessage);
+        when(llmCallService.callToolLoopWithRetry(anyString(), anyList(), any(Object[].class)))
+                .thenReturn(chatResponse);
     }
 
     private void createAgent(Object... tools) {
@@ -93,7 +107,8 @@ class SimpleAgentTest {
         TokenEstimator estimator = new TokenEstimator();
         ToolResultPruner pruner = new ToolResultPruner();
         ContextCompressor compressor = new ContextCompressor(chatClientBuilder, estimator, pruner, compressionProps);
-        ToolCallTracker toolCallTracker = new ToolCallTracker();
+        ErrorHandlingProperties errorProps = new ErrorHandlingProperties();
+        ToolCallTracker toolCallTracker = new ToolCallTracker(errorProps);
 
         agent = new SimpleAgent(
                 chatClientBuilder,
@@ -105,6 +120,8 @@ class SimpleAgentTest {
                 estimator,
                 compressionProps,
                 toolCallTracker,
+                llmCallService,
+                new ErrorClassifier(),
                 "You are a helpful assistant."
         );
     }
@@ -162,11 +179,12 @@ class SimpleAgentTest {
     @Test
     void runConversationHandlesException() {
         createAgent();
-        when(requestSpec.call()).thenThrow(new RuntimeException("LLM connection failed"));
+        when(llmCallService.callLlmWithRetry(anyString(), anyList(), any(Object[].class)))
+                .thenThrow(new RuntimeException("LLM connection failed"));
 
         String result = agent.runConversation("s1", "Hello");
 
-        assertTrue(result.startsWith("抱歉，处理您的请求时出现了错误"));
+        assertTrue(result.startsWith("抱歉，处理您的请求时出现错误"));
     }
 
     @Test

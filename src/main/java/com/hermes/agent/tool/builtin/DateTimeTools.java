@@ -21,10 +21,10 @@ public class DateTimeTools {
 
     private static final Logger log = LoggerFactory.getLogger(DateTimeTools.class);
 
-    @Tool(description = "Get the current date and time in the specified timezone. Useful for time-aware tasks.")
+    @Tool(description = "获取当前日期和时间。当用户询问当前时间、几点、今天日期、星期几、日期等与时间相关的问题时，必须调用此工具。如果用户未指定时区，默认使用系统时区。")
     public String getCurrentTime(
-            @ToolParam(description = "IANA timezone name, e.g. 'Asia/Shanghai', 'America/New_York'. Defaults to system timezone.") String timezone,
-            @ToolParam(description = "Date format string. Defaults to 'yyyy-MM-dd HH:mm:ss z'. Only lowercase y/m/d/h/m/s are valid Java patterns; uppercase Y/D are week-year and day-of-year and will be rejected.") String format
+            @ToolParam(description = "IANA 时区名称，例如 'Asia/Shanghai'、'America/New_York'。默认使用系统时区。") String timezone,
+            @ToolParam(description = "日期格式字符串。默认 'yyyy-MM-dd HH:mm:ss z'。") String format
     ) {
         log.info("[TOOL-CALL] getCurrentTime invoked: timezone_param='{}', format_param='{}'", timezone, format);
 

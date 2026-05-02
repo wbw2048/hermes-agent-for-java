@@ -5,6 +5,8 @@ import com.hermes.agent.compressor.TokenEstimator;
 import com.hermes.agent.config.ContextCompressionProperties;
 import com.hermes.agent.controller.ToolCallInfo;
 import com.hermes.agent.controller.ToolCallTracker;
+import com.hermes.agent.error.ErrorClassifier;
+import com.hermes.agent.error.ErrorClassifier.ErrorType;
 import com.hermes.agent.prompt.PromptBuilder;
 import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.tool.ToolSetManager;
@@ -47,6 +49,8 @@ public class SimpleAgent {
     private final ContextCompressionProperties compressionProperties;
     private final SessionStorageService sessionStorageService;
     private final ToolCallTracker toolCallTracker;
+    private final LlmCallService llmCallService;
+    private final ErrorClassifier errorClassifier;
 
     /**
      * 创建智能体实例。
@@ -60,6 +64,8 @@ public class SimpleAgent {
      * @param tokenEstimator         令牌估算器
      * @param compressionProperties  压缩配置
      * @param toolCallTracker        工具调用追踪器
+     * @param llmCallService         LLM 调用服务（含重试机制）
+     * @param errorClassifier        错误分类器
      * @param defaultSystemPrompt    系统提示词（向后兼容，若 PromptBuilder 未启用则使用）
      */
     public SimpleAgent(
@@ -72,6 +78,8 @@ public class SimpleAgent {
             TokenEstimator tokenEstimator,
             ContextCompressionProperties compressionProperties,
             ToolCallTracker toolCallTracker,
+            LlmCallService llmCallService,
+            ErrorClassifier errorClassifier,
             @Value("${hermes.agent.default-system-prompt:你是一个有帮助的AI助手。请用中文回答问题。}")
             String defaultSystemPrompt
     ) {
@@ -82,6 +90,8 @@ public class SimpleAgent {
         this.tokenEstimator = tokenEstimator;
         this.compressionProperties = compressionProperties;
         this.toolCallTracker = toolCallTracker;
+        this.llmCallService = llmCallService;
+        this.errorClassifier = errorClassifier;
         List<Object> activeBeans = toolSetManager.getActiveToolBeans(allToolBeans);
         this.toolObjects = wrapToolsForTracking(activeBeans);
         log.info("SimpleAgent initialized with {} tool beans (toolsets={}): {}",
@@ -119,6 +129,7 @@ public class SimpleAgent {
 
         // 从数据库加载历史
         List<Message> messages = new ArrayList<>(sessionStorageService.loadSession(sessionId));
+        boolean isNewSession = messages.isEmpty();
 
         // 追加用户消息
         messages.add(new UserMessage(userMessage));
@@ -149,14 +160,7 @@ public class SimpleAgent {
         try {
             toolCallTracker.startTracking();
 
-            var chatResponse = chatClient.prompt()
-                .system(systemPrompt)
-                .messages(messages)
-                .tools(toolObjects)
-                .call()
-                .chatResponse();
-
-            var assistantMsg = chatResponse.getResult().getOutput();
+            AssistantMessage assistantMsg = llmCallService.callLlmWithRetry(systemPrompt, messages, toolObjects);
             String content = assistantMsg.getText();
 
             log.info(">>> [LLM-RESPONSE] sessionId={}, responseText={}", sessionId, content != null ? content.replaceAll("\\n", "\\\\n") : "(null)");
@@ -168,10 +172,17 @@ public class SimpleAgent {
             List<Message> newMessages = messages.subList(historySizeBefore, messages.size());
             sessionStorageService.saveMessages(sessionId, new ArrayList<>(newMessages));
 
+            // 首次对话自动生成会话标题
+            if (isNewSession) {
+                autoGenerateTitle(sessionId, userMessage);
+            }
+
             return content != null ? content : "";
         } catch (Exception e) {
-            log.error(">>> [LLM-ERROR] sessionId={}: {}", sessionId, e.getMessage(), e);
-            return "抱歉，处理您的请求时出现了错误: " + e.getMessage();
+            ErrorType errorType = errorClassifier.classify(e);
+            log.error(">>> [LLM-ERROR] sessionId={}, errorType={}: {}", sessionId, errorType, e.getMessage(), e);
+            return "抱歉，处理您的请求时出现错误 (" + errorType.name().toLowerCase()
+                + "): " + errorClassifier.getUserMessage(errorType);
         } finally {
             toolCallTracker.stopTracking();
         }
@@ -193,6 +204,7 @@ public class SimpleAgent {
 
         sessionStorageService.createSession(sessionId, null);
         List<Message> messages = new ArrayList<>(sessionStorageService.loadSession(sessionId));
+        boolean isNewSession = messages.isEmpty();
 
         String systemPrompt = promptBuilder.buildSystemPrompt();
 
@@ -204,19 +216,16 @@ public class SimpleAgent {
         // 第一阶段：完成工具调用循环（Spring AI 内部处理，中间消息不可见）
         toolCallTracker.startTracking();
         try {
-            ChatResponse toolResponse = chatClient.prompt()
-                .system(systemPrompt)
-                .messages(messages)
-                .tools(toolObjects)
-                .call()
-                .chatResponse();
+            ChatResponse toolResponse = llmCallService.callToolLoopWithRetry(systemPrompt, messages, toolObjects);
 
             // .call() 产生的最终助手消息（可能包含 toolCalls 或最终文本）
             AssistantMessage callAssistantMsg = toolResponse.getResult().getOutput();
             messages.add(callAssistantMsg);
         } catch (Exception e) {
-            log.error(">>> [STREAM-ERROR] tool loop failed: {}", e.getMessage(), e);
-            try { emitter.send(SseEmitter.event().name("error").data("工具调用失败: " + e.getMessage())); }
+            ErrorType errorType = errorClassifier.classify(e);
+            log.error(">>> [STREAM-ERROR] tool loop failed, errorType={}: {}", errorType, e.getMessage(), e);
+            try { emitter.send(SseEmitter.event().name("error")
+                    .data("工具调用失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType))); }
             catch (IOException ignored) {}
             emitter.complete();
             toolCallTracker.stopTracking();
@@ -266,8 +275,10 @@ public class SimpleAgent {
                         if (completed[0]) return;
                         completed[0] = true;
                     }
-                    log.error(">>> [STREAM] Error: {}", error.getMessage(), error);
-                    safeSend(emitter, SseEmitter.event().name("error").data(error.getMessage()));
+                    ErrorType errorType = errorClassifier.classify(error);
+                    log.error(">>> [STREAM] Error, errorType={}: {}", errorType, error.getMessage(), error);
+                    safeSend(emitter, SseEmitter.event().name("error")
+                            .data("流式响应失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType)));
                     emitter.complete();
                 },
                 () -> {
@@ -291,6 +302,12 @@ public class SimpleAgent {
                             sessionStorageService.saveMessages(sessionId, new ArrayList<>(saveNewMessages));
                             log.info(">>> [STREAM] Saved {} messages (user + final assistant response)", saveNewMessages.size());
                         }
+
+                        // 首次对话自动生成会话标题
+                        if (isNewSession) {
+                            autoGenerateTitle(sessionId, message);
+                        }
+
                         saveCompleted[0] = true;
                     } catch (Exception e) {
                         log.error(">>> [STREAM] Failed to save streamed response: {}", e.getMessage(), e);
@@ -320,6 +337,7 @@ public class SimpleAgent {
 
         sessionStorageService.createSession(sessionId, null);
         List<Message> messages = new ArrayList<>(sessionStorageService.loadSession(sessionId));
+        boolean isNewSession = messages.isEmpty();
 
         String systemPrompt = promptBuilder.buildSystemPrompt();
 
@@ -330,18 +348,14 @@ public class SimpleAgent {
         // 第一阶段：工具调用循环
         toolCallTracker.startTracking();
         try {
-            ChatResponse toolResponse = chatClient.prompt()
-                .system(systemPrompt)
-                .messages(messages)
-                .tools(toolObjects)
-                .call()
-                .chatResponse();
+            ChatResponse toolResponse = llmCallService.callToolLoopWithRetry(systemPrompt, messages, toolObjects);
 
             AssistantMessage callAssistantMsg = toolResponse.getResult().getOutput();
             messages.add(callAssistantMsg);
         } catch (Exception e) {
-            log.error(">>> [WS-ERROR] tool loop failed: {}", e.getMessage(), e);
-            wsSender.accept(WsMessage.error("工具调用失败: " + e.getMessage()));
+            ErrorType errorType = errorClassifier.classify(e);
+            log.error(">>> [WS-ERROR] tool loop failed, errorType={}: {}", errorType, e.getMessage(), e);
+            wsSender.accept(WsMessage.error("工具调用失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType)));
             wsSender.accept(WsMessage.done());
             toolCallTracker.stopTracking();
             return;
@@ -377,7 +391,8 @@ public class SimpleAgent {
                 },
                 error -> {
                     log.error(">>> [WS] Stream error: {}", error.getMessage(), error);
-                    wsSender.accept(WsMessage.error("流式响应失败: " + error.getMessage()));
+                    ErrorType errorType = errorClassifier.classify(error);
+                    wsSender.accept(WsMessage.error("流式响应失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType)));
                     wsSender.accept(WsMessage.done());
                 },
                 () -> {
@@ -397,6 +412,11 @@ public class SimpleAgent {
                             sessionStorageService.saveMessages(sessionId, new ArrayList<>(saveNewMessages));
                             log.info(">>> [WS] Saved {} messages", saveNewMessages.size());
                         }
+
+                        // 首次对话自动生成会话标题
+                        if (isNewSession) {
+                            autoGenerateTitle(sessionId, message);
+                        }
                     } catch (Exception e) {
                         log.error(">>> [WS] Failed to save response: {}", e.getMessage(), e);
                     }
@@ -405,8 +425,9 @@ public class SimpleAgent {
                 }
             );
         } catch (Exception e) {
-            log.error(">>> [WS] Failed to start stream: {}", e.getMessage(), e);
-            wsSender.accept(WsMessage.error("流式响应失败: " + e.getMessage()));
+            ErrorType errorType = errorClassifier.classify(e);
+            log.error(">>> [WS] Failed to start stream, errorType={}: {}", errorType, e.getMessage(), e);
+            wsSender.accept(WsMessage.error("流式响应失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType)));
             wsSender.accept(WsMessage.done());
         }
     }
@@ -490,6 +511,23 @@ public class SimpleAgent {
      */
     public ToolCallTracker getToolCallTracker() {
         return toolCallTracker;
+    }
+
+    /**
+     * 根据用户第一条消息自动生成会话标题。
+     * 截取前 50 个字符，去除首尾空白。
+     */
+    private void autoGenerateTitle(String sessionId, String userMessage) {
+        try {
+            String title = userMessage.trim();
+            if (title.length() > 50) {
+                title = title.substring(0, 50);
+            }
+            sessionStorageService.updateSessionTitle(sessionId, title);
+            log.info(">>> [AUTO-TITLE] Generated title for session {}: '{}'", sessionId, title);
+        } catch (Exception e) {
+            log.warn(">>> [AUTO-TITLE] Failed to generate title for session {}: {}", sessionId, e.getMessage());
+        }
     }
 
     /**

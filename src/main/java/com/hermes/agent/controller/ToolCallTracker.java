@@ -1,5 +1,6 @@
 package com.hermes.agent.controller;
 
+import com.hermes.agent.config.ErrorHandlingProperties;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
 import org.slf4j.Logger;
@@ -25,6 +26,12 @@ public class ToolCallTracker {
     private static final Logger log = LoggerFactory.getLogger(ToolCallTracker.class);
 
     private static final ThreadLocal<List<ToolCallInfo>> TRACKING = new ThreadLocal<>();
+
+    private final ErrorHandlingProperties errorHandlingProperties;
+
+    public ToolCallTracker(ErrorHandlingProperties errorHandlingProperties) {
+        this.errorHandlingProperties = errorHandlingProperties;
+    }
 
     /**
      * 开始追踪当前线程的工具调用。
@@ -104,6 +111,14 @@ public class ToolCallTracker {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
                 recordCall(new ToolCallInfo(toolName, argsStr, null, cause.getMessage(), elapsed));
                 log.warn("[TRACKER] tool={} error={} elapsed={}ms", toolName, cause.getMessage(), elapsed);
+
+                // 工具异常隔离：返回错误信息给 LLM，不中断对话
+                if (errorHandlingProperties.isToolErrorIsolationEnabled()) {
+                    String errorMessage = errorHandlingProperties.getToolErrorMessageTemplate()
+                        .replace("{toolName}", toolName)
+                        .replace("{error}", cause.getMessage());
+                    return errorMessage;
+                }
                 throw e;
             }
         });

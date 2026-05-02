@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -220,6 +221,20 @@ public class ConversationController {
 
         // 超时设为 5 分钟
         SseEmitter emitter = new SseEmitter(5 * 60 * 1000L);
+
+        // 超时回调
+        emitter.onTimeout(() -> {
+            log.warn(">>> [STREAM-TIMEOUT] sessionId={}", sessionId);
+            try {
+                emitter.send(SseEmitter.event().name("error").data("请求超时"));
+            } catch (IOException ignored) {}
+            emitter.complete();
+        });
+
+        // 断开连接回调
+        emitter.onCompletion(() -> {
+            log.info(">>> [STREAM-COMPLETED] sessionId={}", sessionId);
+        });
 
         simpleAgent.streamConversation(sessionId, request.message(), emitter);
 

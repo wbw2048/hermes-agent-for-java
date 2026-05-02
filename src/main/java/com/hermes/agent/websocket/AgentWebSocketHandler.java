@@ -44,6 +44,25 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
         try {
             WsMessage wsMsg = objectMapper.readValue(payload, WsMessage.class);
 
+            if ("resume".equals(wsMsg.type())) {
+                String sessionId = wsMsg.sessionId();
+                var pendingMsg = registry.getPendingMessage(sessionId);
+                if (pendingMsg.isPresent()) {
+                    log.info("Resuming conversation for sessionId={}", sessionId);
+                    registry.register(sessionId, session);
+                    simpleAgent.streamConversationWs(sessionId, pendingMsg.get(), msg -> {
+                        send(session, msg);
+                        if ("done".equals(msg.type()) || "error".equals(msg.type())) {
+                            registry.clearPendingConversation(sessionId);
+                        }
+                    });
+                    send(session, WsMessage.resumed(sessionId));
+                } else {
+                    send(session, WsMessage.error("没有可恢复的对话"));
+                }
+                return;
+            }
+
             if (!"chat".equals(wsMsg.type())) {
                 send(session, WsMessage.error("不支持的消息类型: " + wsMsg.type()));
                 return;
@@ -56,7 +75,13 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
             String sessionId = wsMsg.sessionId();
             registry.register(sessionId, session);
-            simpleAgent.streamConversationWs(sessionId, wsMsg.message(), msg -> send(session, msg));
+            registry.markConversationInProgress(sessionId, wsMsg.message());
+            simpleAgent.streamConversationWs(sessionId, wsMsg.message(), msg -> {
+                send(session, msg);
+                if ("done".equals(msg.type()) || "error".equals(msg.type())) {
+                    registry.clearPendingConversation(sessionId);
+                }
+            });
 
         } catch (Exception e) {
             log.error("Error processing WebSocket message", e);
@@ -66,7 +91,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        // 清理所有绑定到此 WebSocketSession 的 sessionId
+        registry.recordDisconnect(session.getId());
         registry.unregister(session.getId());
         log.info("WebSocket connection closed: id={}, status={}", session.getId(), status);
     }
