@@ -906,14 +906,34 @@
             <h3>设置</h3>
             <!-- Tab 切换 -->
             <div style="display:flex;gap:4px;margin-bottom:16px;">
-                <button class="tab-btn active" id="tabPersona" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--accent);color:#fff;font-size:13px;font-weight:500;cursor:pointer;">人设（SOUL.md）</button>
+                <button class="tab-btn active" id="tabPersona" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--accent);color:#fff;font-size:13px;font-weight:500;cursor:pointer;">人设</button>
+                <button class="tab-btn" id="tabMemory" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">记忆</button>
                 <button class="tab-btn" id="tabContext" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">上下文文件</button>
             </div>
             <!-- 人设 Tab -->
             <div id="personaTabContent">
-                <p class="persona-hint">定义 AI 智能体的身份、沟通风格和行为准则。内容将在每次对话时注入系统提示。</p>
+                <p class="persona-hint">定义 AI 智能体的身份、沟通风格和行为准则（角色设定）。内容将在每次对话时注入系统提示。</p>
+                <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:12px;font-size:12px;color:var(--text-secondary);line-height:1.6;">
+                    <strong>三类持久文件的区分：</strong><br>
+                    <b>角色（SOUL.md）</b> — 智能体的人格定义，仅用户可通过此页面修改，智能体不可自行修改。<br>
+                    <b>记忆（MEMORY.md）</b> — 智能体的事实笔记（环境、项目约定），智能体自动保存，用户可在"记忆"Tab查看修正。<br>
+                    <b>用户画像（USER.md）</b> — 关于用户的个人信息（偏好、习惯），智能体自动保存，用户可在"记忆"Tab查看修正。
+                </div>
                 <textarea id="personaContent" placeholder="例如：你是资深 Java 工程师，擅长代码审查，回复要简洁直接..."></textarea>
                 <div class="persona-status" id="personaStatus"></div>
+            </div>
+            <!-- 记忆 Tab -->
+            <div id="memoryTabContent" style="display:none;">
+                <p class="persona-hint">查看和编辑智能体的长期记忆。记忆由智能体在对话中自动保存，你也可以在此手动修正。</p>
+                <div style="display:flex;gap:8px;margin-bottom:12px;">
+                    <button class="tab-btn active" id="tabMemoryFile" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer;">MEMORY.md（智能体笔记）</button>
+                    <button class="tab-btn" id="tabUserFile" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;">USER.md（用户画像）</button>
+                </div>
+                <textarea id="memoryContent" style="min-height:300px;" placeholder="使用 § 分隔符分隔每个条目..."></textarea>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="action-btn" onclick="handleMemoryClear()" style="color:var(--error);">清空当前文件</button>
+                </div>
+                <div class="persona-status" id="memoryStatus"></div>
             </div>
             <!-- 上下文文件 Tab -->
             <div id="contextTabContent" style="display:none;">
@@ -1169,6 +1189,7 @@
 
             // Tab 切换
             document.getElementById('tabPersona').addEventListener('click', () => switchPersonaTab('persona'));
+            document.getElementById('tabMemory').addEventListener('click', () => switchPersonaTab('memory'));
             document.getElementById('tabContext').addEventListener('click', () => switchPersonaTab('context'));
 
             // 上下文文件编辑弹窗
@@ -1370,6 +1391,20 @@
         }
 
         async function handlePersonaSave() {
+            const tabContext = document.getElementById('contextTabContent');
+            const memoryTabContent = document.getElementById('memoryTabContent');
+
+            // 根据当前活跃 Tab 决定保存什么
+            if (memoryTabContent.style.display !== 'none') {
+                handleMemorySave();
+                return;
+            }
+            if (tabContext.style.display !== 'none') {
+                // 上下文文件 Tab 不通过全局保存按钮
+                return;
+            }
+
+            // 人设 Tab 保存
             const content = personaContent.value;
             if (!content.trim()) {
                 personaStatus.textContent = '人设内容不能为空';
@@ -1429,28 +1464,139 @@
 
         function switchPersonaTab(tab) {
             const tabPersona = document.getElementById('tabPersona');
+            const tabMemory = document.getElementById('tabMemory');
             const tabContext = document.getElementById('tabContext');
             const personaTabContent = document.getElementById('personaTabContent');
+            const memoryTabContent = document.getElementById('memoryTabContent');
             const contextTabContent = document.getElementById('contextTabContent');
             const personaModalActions = document.getElementById('personaModalActions');
+
+            // Reset all tabs
+            tabPersona.style.background = 'var(--surface-elevated)';
+            tabPersona.style.color = 'var(--text)';
+            tabMemory.style.background = 'var(--surface-elevated)';
+            tabMemory.style.color = 'var(--text)';
+            tabContext.style.background = 'var(--surface-elevated)';
+            tabContext.style.color = 'var(--text)';
+            personaTabContent.style.display = 'none';
+            memoryTabContent.style.display = 'none';
+            contextTabContent.style.display = 'none';
 
             if (tab === 'persona') {
                 tabPersona.style.background = 'var(--accent)';
                 tabPersona.style.color = '#fff';
-                tabContext.style.background = 'var(--surface-elevated)';
-                tabContext.style.color = 'var(--text)';
                 personaTabContent.style.display = 'block';
-                contextTabContent.style.display = 'none';
                 personaModalActions.style.display = 'flex';
+            } else if (tab === 'memory') {
+                tabMemory.style.background = 'var(--accent)';
+                tabMemory.style.color = '#fff';
+                memoryTabContent.style.display = 'block';
+                personaModalActions.style.display = 'flex';
+                loadMemoryFiles();
             } else {
                 tabContext.style.background = 'var(--accent)';
                 tabContext.style.color = '#fff';
-                tabPersona.style.background = 'var(--surface-elevated)';
-                tabPersona.style.color = 'var(--text)';
-                personaTabContent.style.display = 'none';
                 contextTabContent.style.display = 'block';
                 personaModalActions.style.display = 'none';
                 loadContextFiles();
+            }
+        }
+
+        // ── 记忆管理 ──
+
+        let currentMemoryFile = 'MEMORY.md';
+
+        // 记忆子 Tab 切换
+        document.getElementById('tabMemoryFile').addEventListener('click', () => {
+            currentMemoryFile = 'MEMORY.md';
+            document.getElementById('tabMemoryFile').style.background = 'var(--accent)';
+            document.getElementById('tabMemoryFile').style.color = '#fff';
+            document.getElementById('tabUserFile').style.background = 'var(--surface-elevated)';
+            document.getElementById('tabUserFile').style.color = 'var(--text)';
+            loadMemoryFiles();
+        });
+        document.getElementById('tabUserFile').addEventListener('click', () => {
+            currentMemoryFile = 'USER.md';
+            document.getElementById('tabUserFile').style.background = 'var(--accent)';
+            document.getElementById('tabUserFile').style.color = '#fff';
+            document.getElementById('tabMemoryFile').style.background = 'var(--surface-elevated)';
+            document.getElementById('tabMemoryFile').style.color = 'var(--text)';
+            loadMemoryFiles();
+        });
+
+        async function loadMemoryFiles() {
+            const statusEl = document.getElementById('memoryStatus');
+            statusEl.textContent = '加载中...';
+            statusEl.className = 'persona-status';
+            try {
+                const r = await fetch('/api/conversations/memory');
+                if (r.ok) {
+                    const data = await r.json();
+                    const entries = data.entries[currentMemoryFile === 'MEMORY.md' ? 'memory' : 'user'] || [];
+                    const content = entries.join('\n\n\n\n\n\n\n');
+                    document.getElementById('memoryContent').value = content;
+                    statusEl.textContent = `共 ${entries.length} 个条目`;
+                    statusEl.className = 'persona-status ok';
+                } else {
+                    statusEl.textContent = '加载失败';
+                    statusEl.className = 'persona-status error';
+                }
+            } catch (e) {
+                statusEl.textContent = '加载失败: ' + e.message;
+                statusEl.className = 'persona-status error';
+            }
+        }
+
+        async function handleMemorySave() {
+            const statusEl = document.getElementById('memoryStatus');
+            const content = document.getElementById('memoryContent').value.trim();
+            if (!content) {
+                statusEl.textContent = '内容不能为空';
+                statusEl.className = 'persona-status error';
+                return;
+            }
+
+            const target = currentMemoryFile === 'MEMORY.md' ? 'memory' : 'user';
+            statusEl.textContent = '保存中...';
+            statusEl.className = 'persona-status';
+            try {
+                const r = await fetch(`/api/conversations/memory/${target}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                });
+                const data = await r.json();
+                if (r.ok && data.success) {
+                    statusEl.textContent = '保存成功';
+                    statusEl.className = 'persona-status ok';
+                    loadMemoryFiles();
+                } else {
+                    statusEl.textContent = data.error || '保存失败';
+                    statusEl.className = 'persona-status error';
+                }
+            } catch (e) {
+                statusEl.textContent = '保存失败: ' + e.message;
+                statusEl.className = 'persona-status error';
+            }
+        }
+
+        async function handleMemoryClear() {
+            if (!confirm('确定要清空 ' + currentMemoryFile + ' 的所有内容吗？')) return;
+            const target = currentMemoryFile === 'MEMORY.md' ? 'memory' : 'user';
+            const statusEl = document.getElementById('memoryStatus');
+            try {
+                const r = await fetch(`/api/conversations/memory/${target}`, { method: 'DELETE' });
+                if (r.ok) {
+                    statusEl.textContent = '已清空';
+                    statusEl.className = 'persona-status ok';
+                    loadMemoryFiles();
+                } else {
+                    statusEl.textContent = '清空失败';
+                    statusEl.className = 'persona-status error';
+                }
+            } catch (e) {
+                statusEl.textContent = '清空失败: ' + e.message;
+                statusEl.className = 'persona-status error';
             }
         }
 
