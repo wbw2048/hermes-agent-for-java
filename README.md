@@ -38,6 +38,12 @@ mvn spring-boot:run
 
 应用启动后访问 `http://localhost:8080` 使用 Web 聊天界面。
 
+## 界面截图
+
+<div align="center">
+<img src="screenshots/04-conversation.png" alt="Hermes Agent 聊天界面" width="900">
+</div>
+
 ## 项目结构
 
 ```
