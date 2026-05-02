@@ -21,6 +21,7 @@
 - 上下文压缩（Token 估算 + 工具结果裁剪）
 - 提示注入检测与上下文文件发现
 - Persona 设置与 Web 聊天界面
+- WebSocket 实时双向通信（SSE 模式可切换降级）
 
 ## 快速开始
 
@@ -46,5 +47,6 @@ src/main/java/com/hermes/agent/
 ├── prompt/         # 提示构建与注入检测
 ├── repository/     # 数据访问层
 ├── service/        # 业务逻辑层
-└── tool/           # 工具定义与内置实现
+├── tool/           # 工具定义与内置实现
+└── websocket/      # WebSocket 实时通信
 ```

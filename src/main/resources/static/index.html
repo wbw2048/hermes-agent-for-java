@@ -261,6 +261,27 @@
             vertical-align: middle;
         }
 
+        /* ── 模式切换 ── */
+        .mode-toggle {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent);
+            cursor: pointer;
+            padding: 2px 6px;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            user-select: none;
+            transition: background-color var(--fast), color var(--fast);
+        }
+        .mode-toggle:hover {
+            background: var(--accent);
+            color: #fff;
+        }
+        .mode-toggle.sse-mode {
+            color: var(--text-tertiary);
+            border-color: var(--border);
+        }
+
         .chat-container {
             flex: 1;
             overflow-y: auto;
@@ -831,6 +852,9 @@
                     <button class="action-btn hidden" id="compressBtn" title="上下文压缩">压缩</button>
                     <button class="action-btn hidden" id="clearHistoryBtn" title="清除历史">清空</button>
                     <button class="action-btn" id="settingsBtn" title="人设设置">设置</button>
+                    <span class="mode-toggle" id="modeToggle" title="切换传输模式">
+                        <span class="mode-label" id="modeLabel">WS</span>
+                    </span>
                     <span class="current-session-info" id="currentSessionInfo"></span>
                     <span class="status" id="connectionStatus">连接中</span>
                 </div>
@@ -893,8 +917,117 @@
 
     <script>
         const API_BASE = '/api/conversations';
+        const WS_URL = 'ws://' + window.location.host + '/ws/agent';
         let currentSessionId = null;
         let sessionsCache = [];
+
+        // ── WebSocket 客户端 ──
+        let wsMode = 'ws'; // 'ws' or 'sse'
+        let wsSocket = null;
+        let wsReconnectTimer = null;
+        let wsResolve = null; // Promise resolve for current response
+
+        function connectWebSocket() {
+            if (wsSocket && wsSocket.readyState === WebSocket.OPEN) return;
+            if (wsSocket && wsSocket.readyState === WebSocket.CONNECTING) return;
+
+            wsSocket = new WebSocket(WS_URL);
+
+            wsSocket.onopen = () => {
+                updateWsStatus('已连接', true);
+                // 清除重连定时器
+                if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+            };
+
+            wsSocket.onclose = () => {
+                updateWsStatus('已断开', false);
+                // 自动重连（5秒后）
+                if (!wsReconnectTimer) {
+                    wsReconnectTimer = setTimeout(() => {
+                        if (wsMode === 'ws') connectWebSocket();
+                    }, 5000);
+                }
+            };
+
+            wsSocket.onerror = () => {
+                updateWsStatus('连接错误', false);
+            };
+
+            wsSocket.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    handleWsMessage(msg);
+                } catch (e) {
+                    console.error('Failed to parse WS message:', e);
+                }
+            };
+        }
+
+        function updateWsStatus(text, ok) {
+            if (wsMode !== 'ws') return;
+            connectionStatus.textContent = text;
+            connectionStatus.style.color = ok ? 'var(--success)' : 'var(--error)';
+        }
+
+        function handleWsMessage(msg) {
+            if (!wsResolve) return;
+            wsResolve(msg);
+        }
+
+        function sendViaWebSocket(sessionId, message) {
+            return new Promise((resolve, reject) => {
+                if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN) {
+                    reject(new Error('WebSocket 未连接'));
+                    return;
+                }
+                wsResolve = (msg) => {
+                    if (msg.type === 'done') {
+                        wsResolve = null;
+                        resolve(null);
+                    } else if (msg.type === 'error') {
+                        wsResolve = null;
+                        reject(new Error(msg.data));
+                    } else {
+                        // text, tool_call, tool_result — handled by UI
+                    }
+                    processWsUIMessage(msg);
+                };
+                const payload = JSON.stringify({ type: 'chat', sessionId, message });
+                wsSocket.send(payload);
+            });
+        }
+
+        function processWsUIMessage(msg) {
+            if (msg.type === 'text') {
+                appendToAssistantBuffer(msg.data);
+            } else if (msg.type === 'tool_call') {
+                addToolCallCard({ toolName: msg.toolName, arguments: msg.arguments || '', result: null, elapsedMs: 0, error: null });
+            } else if (msg.type === 'tool_result') {
+                // 更新最后一个工具卡的结果
+                const cards = document.querySelectorAll('.tool-call-card');
+                if (cards.length > 0) {
+                    const lastCard = cards[cards.length - 1];
+                    const statusEl = lastCard.querySelector('.tool-call-status');
+                    const iconEl = lastCard.querySelector('.tool-call-icon');
+                    if (statusEl) statusEl.textContent = 'Done';
+                    if (iconEl) iconEl.style.background = 'var(--success)';
+                    lastCard.classList.add('status-done');
+                    if (msg.result) {
+                        const body = lastCard.querySelector('.tool-call-body');
+                        if (body) {
+                            const section = document.createElement('div');
+                            section.className = 'tool-call-section';
+                            section.innerHTML = `<div class="tool-call-label">结果</div><div class="tool-call-value">${escapeHtml(truncate(msg.result, 2000))}</div>`;
+                            body.appendChild(section);
+                        }
+                    }
+                    if (msg.elapsedMs) {
+                        const elapsedEl = lastCard.querySelector('.tool-call-elapsed');
+                        if (elapsedEl) elapsedEl.textContent = formatElapsed(msg.elapsedMs);
+                    }
+                }
+            }
+        }
 
         // DOM
         const chatContainer = document.getElementById('chatContainer');
@@ -931,6 +1064,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             checkHealth();
             setupEventListeners();
+            loadModePreference();
         });
 
         async function checkHealth() {
@@ -938,8 +1072,10 @@
                 const r = await fetch(`${API_BASE}/health`);
                 if (r.ok) {
                     const data = await r.json();
-                    connectionStatus.textContent = '已连接';
-                    connectionStatus.style.color = 'var(--success)';
+                    if (wsMode === 'sse') {
+                        connectionStatus.textContent = '已连接';
+                        connectionStatus.style.color = 'var(--success)';
+                    }
                     sendButton.disabled = false;
                     await loadSessions();
                     if (sessionsCache.length > 0) {
@@ -971,6 +1107,10 @@
             newSessionBtn.addEventListener('click', createNewSession);
             compressBtn.addEventListener('click', handleCompress);
             clearHistoryBtn.addEventListener('click', handleClearHistory);
+
+            // 模式切换
+            const modeToggle = document.getElementById('modeToggle');
+            modeToggle.addEventListener('click', toggleMode);
 
             // 弹窗
             titleCancelBtn.addEventListener('click', closeTitleModal);
@@ -1296,6 +1436,10 @@
             addMessageToChat('user', message);
             showTypingIndicator();
 
+            // 重置全局助手消息缓冲
+            currentAssistantBody = null;
+            currentTextBuffer = '';
+
             // 创建助手消息气泡（流式渲染用）
             const assistantDiv = document.createElement('div');
             assistantDiv.className = 'message assistant-message';
@@ -1310,18 +1454,38 @@
 
             let textBuffer = '';
 
+            function appendText(text) {
+                textBuffer += text;
+                if (typeof marked !== 'undefined') {
+                    body.innerHTML = marked.parse(textBuffer);
+                } else {
+                    body.textContent = textBuffer;
+                }
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+
+            if (wsMode === 'ws') {
+                // WebSocket 模式
+                try {
+                    await sendViaWebSocket(currentSessionId, message);
+                } catch (e) {
+                    hideTypingIndicator();
+                    addMessageToChat('system', `WebSocket 错误: ${e.message}`);
+                }
+                hideTypingIndicator();
+                await loadSessions();
+                messageInput.focus();
+                sendButton.disabled = messageInput.value.trim() === '';
+                return;
+            }
+
+            // SSE 模式
             function handleSSEEvent(eventType, data) {
                 if (eventType === 'tool') {
                     const tc = JSON.parse(data);
                     addToolCallCard(tc);
                 } else if (eventType === 'text') {
-                    textBuffer += data;
-                    if (typeof marked !== 'undefined') {
-                        body.innerHTML = marked.parse(textBuffer);
-                    } else {
-                        body.textContent = textBuffer;
-                    }
-                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                    appendText(data);
                 } else if (eventType === 'done') {
                     hideTypingIndicator();
                 } else if (eventType === 'error') {
@@ -1491,6 +1655,71 @@
         function truncate(str, maxLen) {
             if (!str) return '';
             return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+        }
+
+        // ── 模式切换 ──
+
+        let currentAssistantBody = null;
+        let currentTextBuffer = '';
+
+        function appendToAssistantBuffer(text) {
+            hideTypingIndicator();
+            if (!currentAssistantBody) {
+                // 找不到正在编辑的助手消息时创建一个新的
+                const assistantDiv = document.createElement('div');
+                assistantDiv.className = 'message assistant-message';
+                const header = document.createElement('div');
+                header.className = 'message-header';
+                header.textContent = '助手';
+                const body = document.createElement('div');
+                body.className = 'message-content';
+                assistantDiv.appendChild(header);
+                assistantDiv.appendChild(body);
+                chatContainer.appendChild(assistantDiv);
+                currentAssistantBody = body;
+                currentTextBuffer = '';
+            }
+            currentTextBuffer += text;
+            if (typeof marked !== 'undefined') {
+                currentAssistantBody.innerHTML = marked.parse(currentTextBuffer);
+            } else {
+                currentAssistantBody.textContent = currentTextBuffer;
+            }
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function toggleMode() {
+            const modeLabel = document.getElementById('modeLabel');
+            const modeToggle = document.getElementById('modeToggle');
+            if (wsMode === 'ws') {
+                wsMode = 'sse';
+                modeLabel.textContent = 'SSE';
+                modeToggle.classList.add('sse-mode');
+                if (wsSocket) { wsSocket.close(); wsSocket = null; }
+                if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+                addMessageToChat('system', '已切换到 SSE 模式');
+            } else {
+                wsMode = 'ws';
+                modeLabel.textContent = 'WS';
+                modeToggle.classList.remove('sse-mode');
+                connectWebSocket();
+                addMessageToChat('system', '已切换到 WebSocket 模式');
+            }
+            localStorage.setItem('hermes-mode', wsMode);
+        }
+
+        function loadModePreference() {
+            const saved = localStorage.getItem('hermes-mode');
+            const modeLabel = document.getElementById('modeLabel');
+            const modeToggle = document.getElementById('modeToggle');
+            if (saved === 'sse') {
+                wsMode = 'sse';
+                modeLabel.textContent = 'SSE';
+                modeToggle.classList.add('sse-mode');
+            } else {
+                wsMode = 'ws';
+                connectWebSocket();
+            }
         }
     </script>
 </body>

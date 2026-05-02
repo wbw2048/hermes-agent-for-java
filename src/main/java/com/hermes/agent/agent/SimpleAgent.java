@@ -8,6 +8,7 @@ import com.hermes.agent.controller.ToolCallTracker;
 import com.hermes.agent.prompt.PromptBuilder;
 import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.tool.ToolSetManager;
+import com.hermes.agent.websocket.WsMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -23,6 +24,7 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * 带工具调用功能的 AI 智能体。
@@ -301,6 +303,111 @@ public class SimpleAgent {
             log.error(">>> [STREAM] Failed to start stream: {}", e.getMessage(), e);
             safeSend(emitter, SseEmitter.event().name("error").data("流式响应失败: " + e.getMessage()));
             emitter.complete();
+        }
+    }
+
+    /**
+     * WebSocket 版本的流式对话。两阶段方案与 SSE 版本相同：
+     * 1. {@code .call()} 执行完整工具调用循环，推送 tool_call/tool_result 事件
+     * 2. {@code .stream()} 复用消息历史，流式输出文本并推送 text 事件
+     *
+     * @param sessionId   会话标识
+     * @param message     用户消息
+     * @param wsSender    向客户端推送消息的回调
+     */
+    public void streamConversationWs(String sessionId, String message, Consumer<WsMessage> wsSender) {
+        log.info(">>> [WS-REQUEST] sessionId={}", sessionId);
+
+        sessionStorageService.createSession(sessionId, null);
+        List<Message> messages = new ArrayList<>(sessionStorageService.loadSession(sessionId));
+
+        String systemPrompt = promptBuilder.buildSystemPrompt();
+
+        UserMessage userMsg = new UserMessage(message);
+        int historySizeBefore = messages.size();
+        messages.add(userMsg);
+
+        // 第一阶段：工具调用循环
+        toolCallTracker.startTracking();
+        try {
+            ChatResponse toolResponse = chatClient.prompt()
+                .system(systemPrompt)
+                .messages(messages)
+                .tools(toolObjects)
+                .call()
+                .chatResponse();
+
+            AssistantMessage callAssistantMsg = toolResponse.getResult().getOutput();
+            messages.add(callAssistantMsg);
+        } catch (Exception e) {
+            log.error(">>> [WS-ERROR] tool loop failed: {}", e.getMessage(), e);
+            wsSender.accept(WsMessage.error("工具调用失败: " + e.getMessage()));
+            wsSender.accept(WsMessage.done());
+            toolCallTracker.stopTracking();
+            return;
+        } finally {
+            toolCallTracker.stopTracking();
+        }
+
+        // 推送工具调用事件
+        for (ToolCallInfo tc : toolCallTracker.getCalls()) {
+            wsSender.accept(WsMessage.toolCall(tc.toolName(), tc.arguments()));
+            if (tc.result() != null && !tc.result().isBlank()) {
+                wsSender.accept(WsMessage.toolResult(tc.toolName(), tc.result(), tc.elapsedMs()));
+            }
+        }
+
+        // 第二阶段：流式输出文本
+        try {
+            final StringBuilder streamedText = new StringBuilder();
+
+            Flux<ChatResponse> stream = chatClient.prompt()
+                .system(systemPrompt)
+                .messages(messages)
+                .stream()
+                .chatResponse();
+
+            stream.subscribe(
+                response -> {
+                    String text = response.getResult() != null ? response.getResult().getOutput().getText() : null;
+                    if (text != null && !text.isEmpty()) {
+                        streamedText.append(text);
+                        wsSender.accept(WsMessage.text(text));
+                    }
+                },
+                error -> {
+                    log.error(">>> [WS] Stream error: {}", error.getMessage(), error);
+                    wsSender.accept(WsMessage.error("流式响应失败: " + error.getMessage()));
+                    wsSender.accept(WsMessage.done());
+                },
+                () -> {
+                    // 流式完成后保存消息
+                    try {
+                        String finalText = streamedText.toString();
+
+                        // 移除 .call() 阶段的助手消息，用 .stream() 的最终响应替代
+                        int lastIdx = messages.size() - 1;
+                        if (lastIdx >= 0 && messages.get(lastIdx).getMessageType() == MessageType.ASSISTANT) {
+                            messages.remove(lastIdx);
+                        }
+
+                        messages.add(new AssistantMessage(finalText));
+                        List<Message> saveNewMessages = messages.subList(historySizeBefore, messages.size());
+                        if (!saveNewMessages.isEmpty()) {
+                            sessionStorageService.saveMessages(sessionId, new ArrayList<>(saveNewMessages));
+                            log.info(">>> [WS] Saved {} messages", saveNewMessages.size());
+                        }
+                    } catch (Exception e) {
+                        log.error(">>> [WS] Failed to save response: {}", e.getMessage(), e);
+                    }
+                    log.info(">>> [WS] Complete");
+                    wsSender.accept(WsMessage.done());
+                }
+            );
+        } catch (Exception e) {
+            log.error(">>> [WS] Failed to start stream: {}", e.getMessage(), e);
+            wsSender.accept(WsMessage.error("流式响应失败: " + e.getMessage()));
+            wsSender.accept(WsMessage.done());
         }
     }
 
