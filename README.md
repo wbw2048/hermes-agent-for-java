@@ -24,7 +24,8 @@
 - WebSocket 实时双向通信（SSE 模式可切换降级）
 - 错误处理与重试机制（LLM 自动重试、工具异常隔离、断线恢复）
 - 长期记忆系统（跨会话记忆、自动提取、注入威胁防护）
-- 会话标题自动生成
+- 会话标题自动生成与对话整理
+- 会话工作目录沙箱（每会话独立 workspace，文件系统与终端操作严格隔离）
 
 ## 快速开始
 
@@ -72,5 +73,6 @@ src/main/java/com/hermes/agent/
 ├── repository/     # 数据访问层
 ├── service/        # 业务逻辑层
 ├── tool/           # 工具定义与内置实现
-└── websocket/      # WebSocket 实时通信
+├── websocket/      # WebSocket 实时通信
+└── workspace/      # 会话工作目录沙箱 (WorkspaceManager, SessionContext)
 ```
