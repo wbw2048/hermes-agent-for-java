@@ -14,6 +14,11 @@ import com.hermes.agent.memory.MemoryStore;
 import com.hermes.agent.memory.MemoryThreatDetector;
 import com.hermes.agent.prompt.PromptBuilder;
 import com.hermes.agent.mcp.McpToolProvider;
+import com.hermes.agent.skill.SkillManager;
+import com.hermes.agent.skill.SkillPreprocessor;
+import com.hermes.agent.skill.SkillProperties;
+import com.hermes.agent.skill.SkillRegistry;
+import com.hermes.agent.skill.SkillTools;
 import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.tool.ToolSetManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -119,7 +124,18 @@ class SimpleAgentTest {
         memManager.addProvider(new com.hermes.agent.memory.BuiltinMemoryProvider(memStore));
         MemoryExtractor memExtractor = mock(MemoryExtractor.class);
 
-        PromptBuilder promptBuilder = new PromptBuilder("You are a helpful assistant.", memManager);
+        SkillProperties skillProps = new SkillProperties();
+        skillProps.setEnabled(false);
+        SkillRegistry skillRegistry = mock(SkillRegistry.class);
+        when(skillRegistry.getSkillNames()).thenReturn(java.util.Set.of());
+        when(skillRegistry.getAllSkills()).thenReturn(List.of());
+        SkillPreprocessor skillPreprocessor = new SkillPreprocessor(skillProps);
+        SkillManager skillManager = mock(SkillManager.class);
+        when(skillManager.buildSkillPromptBlock(anyString())).thenReturn("");
+        when(skillManager.buildSkillPromptBlock((String) null)).thenReturn("");
+        SkillTools skillTools = new SkillTools(skillRegistry, skillManager, skillPreprocessor);
+
+        PromptBuilder promptBuilder = new PromptBuilder("You are a helpful assistant.", memManager, skillManager);
         ContextCompressionProperties compressionProps = new ContextCompressionProperties();
         compressionProps.setEnabled(false); // Disable compression in tests by default
         TokenEstimator estimator = new TokenEstimator();
@@ -146,22 +162,29 @@ class SimpleAgentTest {
                 mock(com.hermes.agent.service.TitleGeneratorService.class),
                 mock(com.hermes.agent.config.TitleGenerationProperties.class),
                 mcpToolProvider,
+                skillTools,
                 "You are a helpful assistant."
         );
     }
 
     @Test
-    void getAvailableToolsReturnsEmptyWhenNoToolsRegistered() {
+    void getAvailableToolsReturnsSkillToolsWhenNoCustomTools() {
         createAgent();
-        assertTrue(agent.getAvailableTools().isEmpty());
+        List<String> tools = agent.getAvailableTools();
+        // SkillTools is always registered, so these tools should be present
+        assertTrue(tools.contains("skillsList"));
+        assertTrue(tools.contains("skillView"));
+        assertTrue(tools.contains("activateSkill"));
+        assertTrue(tools.contains("deactivateSkill"));
     }
 
     @Test
     void getAvailableToolsReturnsToolNames() {
         createAgent(new SimpleToolBean());
         List<String> tools = agent.getAvailableTools();
-        assertEquals(1, tools.size());
         assertTrue(tools.contains("testTool"));
+        // SkillTools is also present
+        assertTrue(tools.contains("skillsList"));
     }
 
     @Test

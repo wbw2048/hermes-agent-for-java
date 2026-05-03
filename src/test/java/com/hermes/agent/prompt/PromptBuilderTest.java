@@ -2,14 +2,19 @@ package com.hermes.agent.prompt;
 
 import com.hermes.agent.config.MemoryProperties;
 import com.hermes.agent.memory.MemoryManager;
+import com.hermes.agent.skill.SkillManager;
+import com.hermes.agent.skill.SkillPreprocessor;
+import com.hermes.agent.skill.SkillRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /**
  * {@link PromptBuilder} 的测试。
@@ -22,9 +27,16 @@ class PromptBuilderTest {
         return new MemoryManager(props);
     }
 
+    private SkillManager createMockSkillManager() {
+        SkillManager manager = mock(SkillManager.class);
+        when(manager.buildSkillPromptBlock(anyString())).thenReturn("");
+        when(manager.buildSkillPromptBlock((String) null)).thenReturn("");
+        return manager;
+    }
+
     @Test
     void buildsPromptWithDefaultIdentity() {
-        PromptBuilder builder = new PromptBuilder("你是 Hermes Agent，一个智能助手。", createMemoryManager());
+        PromptBuilder builder = new PromptBuilder("你是 Hermes Agent，一个智能助手。", createMemoryManager(), createMockSkillManager());
         String prompt = builder.buildSystemPrompt();
         assertNotNull(prompt);
         assertTrue(prompt.length() > 0);
@@ -34,7 +46,7 @@ class PromptBuilderTest {
 
     @Test
     void buildsPromptWithSessionId() {
-        PromptBuilder builder = new PromptBuilder("你是 Hermes Agent，一个智能助手。", createMemoryManager());
+        PromptBuilder builder = new PromptBuilder("你是 Hermes Agent，一个智能助手。", createMemoryManager(), createMockSkillManager());
         String prompt = builder.buildSystemPrompt("test-session-id");
         assertNotNull(prompt);
         assertTrue(prompt.length() > 0);
@@ -44,7 +56,7 @@ class PromptBuilderTest {
 
     @Test
     void buildsPromptWithNullSessionIdSameAsNoArg() {
-        PromptBuilder builder = new PromptBuilder("你是默认助手。", createMemoryManager());
+        PromptBuilder builder = new PromptBuilder("你是默认助手。", createMemoryManager(), createMockSkillManager());
         String withNull = builder.buildSystemPrompt(null);
         String noArg = builder.buildSystemPrompt();
         assertEquals(noArg, withNull);

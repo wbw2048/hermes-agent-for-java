@@ -27,6 +27,7 @@
 - 会话标题自动生成与对话整理
 - 会话工作目录沙箱（每会话独立 workspace，文件系统与终端操作严格隔离）
 - MCP 协议支持（连接外部 MCP Server，运行时连接/断开/重连，工具自动注册到智能体）
+- Skills 可插拔技能系统（SKILL.md 指令注入、会话级激活/停用、全局技能、前端技能管理面板）
 
 ## 快速开始
 
@@ -76,5 +77,6 @@ src/main/java/com/hermes/agent/
 ├── tool/           # 工具定义与内置实现
 ├── websocket/      # WebSocket 实时通信
 ├── workspace/      # 会话工作目录沙箱 (WorkspaceManager, SessionContext)
-└── mcp/            # MCP 协议支持 (连接管理、工具发现、工具调用代理)
+├── mcp/            # MCP 协议支持 (连接管理、工具发现、工具调用代理)
+└── skill/          # Skills 技能系统 (注册中心、生命周期管理、预处理、REST API)
 ```

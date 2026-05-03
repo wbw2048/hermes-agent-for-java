@@ -1,6 +1,7 @@
 package com.hermes.agent.prompt;
 
 import com.hermes.agent.memory.MemoryManager;
+import com.hermes.agent.skill.SkillManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -8,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 系统提示构建器。
- * 组装智能体身份、上下文文件发现、长期记忆和配置的默认提示词。
+ * 组装智能体身份、上下文文件发现、长期记忆、已激活技能和配置的默认提示词。
  */
 @Component
 public class PromptBuilder {
@@ -17,14 +18,17 @@ public class PromptBuilder {
 
     private final String defaultSystemPrompt;
     private final MemoryManager memoryManager;
+    private final SkillManager skillManager;
 
     public PromptBuilder(
             @Value("${hermes.agent.default-system-prompt:}")
             String defaultSystemPrompt,
-            MemoryManager memoryManager
+            MemoryManager memoryManager,
+            SkillManager skillManager
     ) {
         this.defaultSystemPrompt = defaultSystemPrompt;
         this.memoryManager = memoryManager;
+        this.skillManager = skillManager;
     }
 
     /**
@@ -64,6 +68,12 @@ public class PromptBuilder {
         String memoryBlock = memoryManager.buildSystemPrompt();
         if (!memoryBlock.isEmpty()) {
             prompt.append("\n\n").append(memoryBlock);
+        }
+
+        // 4. 已激活技能
+        String skillBlock = skillManager.buildSkillPromptBlock(sessionId);
+        if (!skillBlock.isEmpty()) {
+            prompt.append(skillBlock);
         }
 
         String result = prompt.toString();

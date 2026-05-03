@@ -914,6 +914,7 @@
                 <button class="tab-btn" id="tabContext" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">上下文文件</button>
                 <button class="tab-btn" id="tabRateLimit" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">API 用量</button>
                 <button class="tab-btn" id="tabMcp" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">MCP</button>
+                <button class="tab-btn" id="tabSkills" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">Skills</button>
             </div>
             <!-- 人设 Tab -->
             <div id="personaTabContent">
@@ -969,6 +970,23 @@
                 </div>
                 <div style="display:flex;gap:8px;margin-top:8px;">
                     <button class="action-btn" id="refreshMcpBtn" style="font-size:12px;">刷新</button>
+                </div>
+            </div>
+            <!-- Skills 技能 Tab -->
+            <div id="skillsTabContent" style="display:none;">
+                <p class="persona-hint">管理可插拔的 Skills 技能。激活技能后，其指令将注入到当前会话的系统提示中。</p>
+                <div id="skillsActiveSection" style="margin-bottom:16px;">
+                    <h4 style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;">已激活技能</h4>
+                    <div id="skillsActiveList" style="min-height:40px;">
+                        <p style="color:var(--text-tertiary);font-size:12px;">当前会话未激活任何技能。</p>
+                    </div>
+                </div>
+                <h4 style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;">可用技能</h4>
+                <div id="skillsList" style="min-height:150px;">
+                    <p style="color:var(--text-secondary);font-size:13px;">加载中...</p>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="action-btn" id="refreshSkillsBtn" style="font-size:12px;">刷新</button>
                 </div>
             </div>
             <!-- 上下文文件编辑弹窗 -->
@@ -1222,6 +1240,7 @@
             document.getElementById('tabContext').addEventListener('click', () => switchPersonaTab('context'));
             document.getElementById('tabRateLimit').addEventListener('click', () => switchPersonaTab('rateLimit'));
             document.getElementById('tabMcp').addEventListener('click', () => switchPersonaTab('mcp'));
+            document.getElementById('tabSkills').addEventListener('click', () => switchPersonaTab('skills'));
 
             // 上下文文件编辑弹窗
             document.getElementById('contextEditCancelBtn').addEventListener('click', closeContextEditOverlay);
@@ -1502,11 +1521,13 @@
             const tabContext = document.getElementById('tabContext');
             const tabRateLimit = document.getElementById('tabRateLimit');
             const tabMcp = document.getElementById('tabMcp');
+            const tabSkills = document.getElementById('tabSkills');
             const personaTabContent = document.getElementById('personaTabContent');
             const memoryTabContent = document.getElementById('memoryTabContent');
             const contextTabContent = document.getElementById('contextTabContent');
             const rateLimitTabContent = document.getElementById('rateLimitTabContent');
             const mcpTabContent = document.getElementById('mcpTabContent');
+            const skillsTabContent = document.getElementById('skillsTabContent');
             const personaModalActions = document.getElementById('personaModalActions');
 
             // Reset all tabs
@@ -1520,11 +1541,14 @@
             tabRateLimit.style.color = 'var(--text)';
             tabMcp.style.background = 'var(--surface-elevated)';
             tabMcp.style.color = 'var(--text)';
+            tabSkills.style.background = 'var(--surface-elevated)';
+            tabSkills.style.color = 'var(--text)';
             personaTabContent.style.display = 'none';
             memoryTabContent.style.display = 'none';
             contextTabContent.style.display = 'none';
             rateLimitTabContent.style.display = 'none';
             mcpTabContent.style.display = 'none';
+            skillsTabContent.style.display = 'none';
 
             if (tab === 'persona') {
                 tabPersona.style.background = 'var(--accent)';
@@ -1555,6 +1579,12 @@
                 mcpTabContent.style.display = 'block';
                 personaModalActions.style.display = 'none';
                 loadMcpServers();
+            } else if (tab === 'skills') {
+                tabSkills.style.background = 'var(--accent)';
+                tabSkills.style.color = '#fff';
+                skillsTabContent.style.display = 'block';
+                personaModalActions.style.display = 'none';
+                loadSkills();
             }
         }
 
@@ -2307,6 +2337,97 @@
         }
 
         document.getElementById('refreshMcpBtn').addEventListener('click', loadMcpServers);
+
+        // ── Skills 技能管理 ──
+
+        async function loadSkills() {
+            await loadActiveSkills();
+            await loadSkillsList();
+        }
+
+        async function loadSkillsList() {
+            const el = document.getElementById('skillsList');
+            try {
+                const r = await fetch('/api/skills');
+                if (!r.ok) { el.innerHTML = '<p style="color:var(--error);font-size:13px;">加载失败</p>'; return; }
+                const data = await r.json();
+                renderSkillsList(data.skills || []);
+            } catch (e) {
+                el.innerHTML = '<p style="color:var(--error);font-size:13px;">无法连接 API</p>';
+            }
+        }
+
+        function renderSkillsList(skills) {
+            const el = document.getElementById('skillsList');
+            if (!skills || skills.length === 0) {
+                el.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">暂无可用技能。在 ~/.hermes/skills/ 目录下添加 SKILL.md 文件。</p>';
+                return;
+            }
+            const active = getActiveSkillNames();
+            el.innerHTML = skills.map(s => {
+                const isActive = active.has(s.name);
+                return `
+                    <div style="background:var(--surface-elevated);border:1px solid ${isActive ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <strong style="font-size:14px;">${escapeHtml(s.name)}</strong>
+                                ${isActive ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--success);margin-left:8px;"></span>' : ''}
+                            </div>
+                            <div style="display:flex;gap:4px;">
+                                ${!isActive ? `<button class="action-btn" style="font-size:11px;padding:4px 8px;background:var(--accent);color:#fff;" onclick="activateSkill('${s.name}')">激活</button>` : `<button class="action-btn" style="font-size:11px;padding:4px 8px;color:var(--error);" onclick="deactivateSkill('${s.name}')">停用</button>`}
+                            </div>
+                        </div>
+                        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">${escapeHtml(s.description || '')}</div>
+                        ${s.category ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">分类: ${escapeHtml(s.category)}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getActiveSkillNames() {
+            const list = document.getElementById('skillsActiveList');
+            if (!list) return new Set();
+            const names = new Set();
+            list.querySelectorAll('[data-skill-name]').forEach(el => names.add(el.getAttribute('data-skill-name')));
+            return names;
+        }
+
+        async function loadActiveSkills() {
+            const el = document.getElementById('skillsActiveList');
+            try {
+                const r = await fetch(`/api/skills/active?sessionId=${currentSessionId}`);
+                if (!r.ok) return;
+                const data = await r.json();
+                const all = new Set([...(data.session_skills || []), ...(data.global_skills || [])]);
+                renderActiveSkills([...all]);
+            } catch (e) {}
+        }
+
+        function renderActiveSkills(names) {
+            const el = document.getElementById('skillsActiveList');
+            if (!names || names.length === 0) {
+                el.innerHTML = '<p style="color:var(--text-tertiary);font-size:12px;">当前会话未激活任何技能。</p>';
+                return;
+            }
+            el.innerHTML = names.map(n => `
+                <span data-skill-name="${escapeHtml(n)}" style="display:inline-flex;align-items:center;gap:4px;background:rgba(0,113,227,0.08);border:1px solid rgba(0,113,227,0.2);border-radius:var(--radius-sm);padding:4px 10px;margin:2px;font-size:12px;">
+                    ${escapeHtml(n)}
+                    <span style="cursor:pointer;color:var(--error);" onclick="deactivateSkill('${escapeHtml(n)}')">&times;</span>
+                </span>
+            `).join('');
+        }
+
+        async function activateSkill(name) {
+            await fetch(`/api/skills/${name}/activate?sessionId=${currentSessionId}`, { method: 'POST' });
+            loadSkills();
+        }
+
+        async function deactivateSkill(name) {
+            await fetch(`/api/skills/${name}/deactivate?sessionId=${currentSessionId}`, { method: 'POST' });
+            loadSkills();
+        }
+
+        document.getElementById('refreshSkillsBtn').addEventListener('click', loadSkills);
     </script>
 </body>
 </html>

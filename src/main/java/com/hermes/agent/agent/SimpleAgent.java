@@ -15,6 +15,7 @@ import com.hermes.agent.prompt.PromptBuilder;
 import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.service.TitleGeneratorService;
 import com.hermes.agent.mcp.McpToolProvider;
+import com.hermes.agent.skill.SkillTools;
 import com.hermes.agent.tool.ToolSetManager;
 import com.hermes.agent.websocket.WsMessage;
 import com.hermes.agent.workspace.SessionContext;
@@ -66,6 +67,7 @@ public class SimpleAgent {
     private final TitleGeneratorService titleGeneratorService;
     private final TitleGenerationProperties titleProperties;
     private final McpToolProvider mcpToolProvider;
+    private final SkillTools skillTools;
 
     /**
      * 创建智能体实例。
@@ -83,6 +85,7 @@ public class SimpleAgent {
      * @param errorClassifier        错误分类器
      * @param defaultSystemPrompt    系统提示词（向后兼容，若 PromptBuilder 未启用则使用）
      * @param mcpToolProvider        MCP 工具提供者，用于发现外部 MCP 服务器工具
+     * @param skillTools             技能管理工具，供 LLM 激活/查看技能
      */
     public SimpleAgent(
             ChatClient.Builder chatClientBuilder,
@@ -102,6 +105,7 @@ public class SimpleAgent {
             TitleGeneratorService titleGeneratorService,
             TitleGenerationProperties titleProperties,
             McpToolProvider mcpToolProvider,
+            SkillTools skillTools,
             @Value("${hermes.agent.default-system-prompt:你是一个有帮助的AI助手。请用中文回答问题。}")
             String defaultSystemPrompt
     ) {
@@ -120,6 +124,7 @@ public class SimpleAgent {
         this.titleGeneratorService = titleGeneratorService;
         this.titleProperties = titleProperties;
         this.mcpToolProvider = mcpToolProvider;
+        this.skillTools = skillTools;
         List<Object> activeBeans = toolSetManager.getActiveToolBeans(allToolBeans);
         this.toolObjects = buildAllTools(activeBeans, mcpToolProvider);
         log.info("SimpleAgent initialized with {} tool beans (toolsets={}): {}",
@@ -153,7 +158,10 @@ public class SimpleAgent {
         List<ToolCallback> mcpCallbacks = mcpToolProvider.discoverAllTools();
         allTools.addAll(mcpCallbacks);
 
-        log.info("SimpleAgent: {} native tool(s) + {} MCP tool(s) = {} total",
+        // 技能工具（供 LLM 激活/查看技能）
+        allTools.add(skillTools);
+
+        log.info("SimpleAgent: {} native tool(s) + {} MCP tool(s) + SkillTools = {} total",
             nativeTools.size(), mcpCallbacks.size(), allTools.size());
 
         return allTools.toArray();
