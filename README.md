@@ -28,6 +28,7 @@
 - 会话工作目录沙箱（每会话独立 workspace，文件系统与终端操作严格隔离）
 - MCP 协议支持（连接外部 MCP Server，运行时连接/断开/重连，工具自动注册到智能体）
 - Skills 可插拔技能系统（SKILL.md 指令注入、会话级激活/停用、全局技能、前端技能管理面板）
+- 错误模式学习（工具失败自动记录到 SQLite、LLM 异步提取经验教训、重复模式检测、前端错误模式管理面板）
 
 ## 快速开始
 
@@ -69,7 +70,7 @@ src/main/java/com/hermes/agent/
 ├── config/         # 配置类
 ├── controller/     # REST 接口
 ├── entity/         # 数据库实体
-├── error/          # 错误处理（分类器、全局异常处理器）
+├── error/          # 错误处理（分类器、全局异常处理器、错误模式学习与教训提取）
 ├── memory/         # 长期记忆（MemoryStore, MemoryManager, MemoryExtractor）
 ├── prompt/         # 提示构建与注入检测
 ├── repository/     # 数据访问层

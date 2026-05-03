@@ -915,6 +915,7 @@
                 <button class="tab-btn" id="tabRateLimit" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">API 用量</button>
                 <button class="tab-btn" id="tabMcp" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">MCP</button>
                 <button class="tab-btn" id="tabSkills" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">Skills</button>
+                <button class="tab-btn" id="tabErrorPatterns" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">错误模式</button>
             </div>
             <!-- 人设 Tab -->
             <div id="personaTabContent">
@@ -987,6 +988,35 @@
                 </div>
                 <div style="display:flex;gap:8px;margin-top:8px;">
                     <button class="action-btn" id="refreshSkillsBtn" style="font-size:12px;">刷新</button>
+                </div>
+            </div>
+            <!-- 错误模式 Tab -->
+            <div id="errorPatternsTabContent" style="display:none;">
+                <p class="persona-hint">查看智能体遇到的工具错误和从中积累的经验教训。</p>
+                <div id="errorStats" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:100px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;text-align:center;">
+                        <div style="font-size:20px;font-weight:600;color:var(--text);" id="errorTotalCount">-</div>
+                        <div style="font-size:11px;color:var(--text-secondary);">总错误</div>
+                    </div>
+                    <div style="flex:1;min-width:100px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;text-align:center;">
+                        <div style="font-size:20px;font-weight:600;color:var(--accent);" id="errorRepeatCount">-</div>
+                        <div style="font-size:11px;color:var(--text-secondary);">重复模式</div>
+                    </div>
+                    <div style="flex:1;min-width:100px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;text-align:center;">
+                        <div style="font-size:20px;font-weight:600;color:var(--success, #10b981);" id="errorLessonsCount">-</div>
+                        <div style="font-size:11px;color:var(--text-secondary);">已积累教训</div>
+                    </div>
+                </div>
+                <h4 style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;">已积累的经验教训</h4>
+                <div id="lessonsList" style="max-height:160px;overflow-y:auto;margin-bottom:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;font-size:12px;color:var(--text);line-height:1.6;">
+                    <p style="color:var(--text-tertiary);">暂无经验教训。</p>
+                </div>
+                <h4 style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;">错误历史</h4>
+                <div id="errorList" style="max-height:260px;overflow-y:auto;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;font-size:12px;font-family:var(--font-mono);">
+                    <p style="color:var(--text-tertiary);">暂无错误记录。</p>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="action-btn" id="refreshErrorPatternsBtn" style="font-size:12px;">刷新</button>
                 </div>
             </div>
             <!-- 上下文文件编辑弹窗 -->
@@ -1241,6 +1271,10 @@
             document.getElementById('tabRateLimit').addEventListener('click', () => switchPersonaTab('rateLimit'));
             document.getElementById('tabMcp').addEventListener('click', () => switchPersonaTab('mcp'));
             document.getElementById('tabSkills').addEventListener('click', () => switchPersonaTab('skills'));
+            document.getElementById('tabErrorPatterns').addEventListener('click', () => switchPersonaTab('errorPatterns'));
+
+            // 错误模式刷新按钮
+            document.getElementById('refreshErrorPatternsBtn').addEventListener('click', loadErrorPatterns);
 
             // 上下文文件编辑弹窗
             document.getElementById('contextEditCancelBtn').addEventListener('click', closeContextEditOverlay);
@@ -1522,12 +1556,14 @@
             const tabRateLimit = document.getElementById('tabRateLimit');
             const tabMcp = document.getElementById('tabMcp');
             const tabSkills = document.getElementById('tabSkills');
+            const tabErrorPatterns = document.getElementById('tabErrorPatterns');
             const personaTabContent = document.getElementById('personaTabContent');
             const memoryTabContent = document.getElementById('memoryTabContent');
             const contextTabContent = document.getElementById('contextTabContent');
             const rateLimitTabContent = document.getElementById('rateLimitTabContent');
             const mcpTabContent = document.getElementById('mcpTabContent');
             const skillsTabContent = document.getElementById('skillsTabContent');
+            const errorPatternsTabContent = document.getElementById('errorPatternsTabContent');
             const personaModalActions = document.getElementById('personaModalActions');
 
             // Reset all tabs
@@ -1543,12 +1579,15 @@
             tabMcp.style.color = 'var(--text)';
             tabSkills.style.background = 'var(--surface-elevated)';
             tabSkills.style.color = 'var(--text)';
+            tabErrorPatterns.style.background = 'var(--surface-elevated)';
+            tabErrorPatterns.style.color = 'var(--text)';
             personaTabContent.style.display = 'none';
             memoryTabContent.style.display = 'none';
             contextTabContent.style.display = 'none';
             rateLimitTabContent.style.display = 'none';
             mcpTabContent.style.display = 'none';
             skillsTabContent.style.display = 'none';
+            errorPatternsTabContent.style.display = 'none';
 
             if (tab === 'persona') {
                 tabPersona.style.background = 'var(--accent)';
@@ -1585,6 +1624,12 @@
                 skillsTabContent.style.display = 'block';
                 personaModalActions.style.display = 'none';
                 loadSkills();
+            } else if (tab === 'errorPatterns') {
+                tabErrorPatterns.style.background = 'var(--accent)';
+                tabErrorPatterns.style.color = '#fff';
+                errorPatternsTabContent.style.display = 'block';
+                personaModalActions.style.display = 'none';
+                loadErrorPatterns();
             }
         }
 
@@ -2428,6 +2473,72 @@
         }
 
         document.getElementById('refreshSkillsBtn').addEventListener('click', loadSkills);
+
+        // ── 错误模式管理 ──
+
+        async function loadErrorPatterns() {
+            loadErrorStats();
+            loadErrorLessons();
+            loadErrorList();
+        }
+
+        async function loadErrorStats() {
+            try {
+                const r = await fetch('/api/error-patterns/stats');
+                if (!r.ok) return;
+                const data = await r.json();
+                document.getElementById('errorTotalCount').textContent = data.totalErrors || 0;
+                document.getElementById('errorRepeatCount').textContent = data.repeatErrors || 0;
+                document.getElementById('errorLessonsCount').textContent = data.totalLessons || 0;
+            } catch (e) {}
+        }
+
+        async function loadErrorLessons() {
+            const el = document.getElementById('lessonsList');
+            try {
+                const r = await fetch('/api/error-patterns/lessons?limit=50');
+                if (!r.ok) return;
+                const data = await r.json();
+                if (!data.lessons || data.lessons.length === 0) {
+                    el.innerHTML = '<p style="color:var(--text-tertiary);">暂无经验教训。</p>';
+                    return;
+                }
+                el.innerHTML = data.lessons.map(l => `
+                    <div style="padding:6px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;">
+                        <span style="color:var(--success, #10b981);font-weight:500;flex-shrink:0;">[${escapeHtml(l.toolName)}]</span>
+                        <span style="flex:1;">${escapeHtml(l.lesson)}</span>
+                        ${l.repeat ? '<span style="color:var(--accent);font-size:10px;">重复</span>' : ''}
+                    </div>
+                `).join('');
+            } catch (e) {
+                el.innerHTML = '<p style="color:var(--text-tertiary);">加载失败。</p>';
+            }
+        }
+
+        async function loadErrorList() {
+            const el = document.getElementById('errorList');
+            try {
+                const r = await fetch('/api/error-patterns?page=0&size=50');
+                if (!r.ok) return;
+                const data = await r.json();
+                if (!data.errors || data.errors.length === 0) {
+                    el.innerHTML = '<p style="color:var(--text-tertiary);">暂无错误记录。</p>';
+                    return;
+                }
+                el.innerHTML = data.errors.map(e => `
+                    <div style="padding:6px 0;border-bottom:1px solid var(--border);">
+                        <div style="display:flex;justify-content:space-between;gap:8px;">
+                            <span style="font-weight:500;">${escapeHtml(e.toolName)}</span>
+                            <span style="color:${e.errorType === 'TOOL_ERROR' ? 'var(--error)' : 'var(--accent)'};">${escapeHtml(e.errorType)}</span>
+                        </div>
+                        <div style="color:var(--text-tertiary);font-size:11px;margin-top:2px;">${escapeHtml(e.errorSnippet || '')}</div>
+                        <div style="color:var(--text-tertiary);font-size:10px;margin-top:2px;">${escapeHtml(e.occurredAt || '')}${e.repeat ? ' · <span style="color:var(--accent);">重复模式</span>' : ''}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                el.innerHTML = '<p style="color:var(--text-tertiary);">加载失败。</p>';
+            }
+        }
     </script>
 </body>
 </html>

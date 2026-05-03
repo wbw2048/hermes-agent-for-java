@@ -5,9 +5,12 @@ import com.hermes.agent.compressor.TokenEstimator;
 import com.hermes.agent.compressor.ToolResultPruner;
 import com.hermes.agent.config.ContextCompressionProperties;
 import com.hermes.agent.config.ErrorHandlingProperties;
+import com.hermes.agent.config.ErrorPatternProperties;
 import com.hermes.agent.config.MemoryProperties;
 import com.hermes.agent.controller.ToolCallTracker;
 import com.hermes.agent.error.ErrorClassifier;
+import com.hermes.agent.error.ErrorPatternMemory;
+import com.hermes.agent.error.ErrorPatternTracker;
 import com.hermes.agent.memory.MemoryExtractor;
 import com.hermes.agent.memory.MemoryManager;
 import com.hermes.agent.memory.MemoryStore;
@@ -135,7 +138,12 @@ class SimpleAgentTest {
         when(skillManager.buildSkillPromptBlock((String) null)).thenReturn("");
         SkillTools skillTools = new SkillTools(skillRegistry, skillManager, skillPreprocessor);
 
-        PromptBuilder promptBuilder = new PromptBuilder("You are a helpful assistant.", memManager, skillManager);
+        ErrorPatternTracker errorPatternTracker = mock(ErrorPatternTracker.class);
+        ErrorPatternMemory errorPatternMemory = mock(ErrorPatternMemory.class);
+        ErrorPatternProperties errorPatternProps = new ErrorPatternProperties();
+        errorPatternProps.setEnabled(false);
+
+        PromptBuilder promptBuilder = new PromptBuilder("You are a helpful assistant.", memManager, skillManager, errorPatternTracker, errorPatternProps);
         ContextCompressionProperties compressionProps = new ContextCompressionProperties();
         compressionProps.setEnabled(false); // Disable compression in tests by default
         TokenEstimator estimator = new TokenEstimator();
@@ -163,6 +171,8 @@ class SimpleAgentTest {
                 mock(com.hermes.agent.config.TitleGenerationProperties.class),
                 mcpToolProvider,
                 skillTools,
+                errorPatternTracker,
+                errorPatternMemory,
                 "You are a helpful assistant."
         );
     }

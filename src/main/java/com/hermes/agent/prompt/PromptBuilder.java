@@ -1,5 +1,7 @@
 package com.hermes.agent.prompt;
 
+import com.hermes.agent.config.ErrorPatternProperties;
+import com.hermes.agent.error.ErrorPatternTracker;
 import com.hermes.agent.memory.MemoryManager;
 import com.hermes.agent.skill.SkillManager;
 import org.slf4j.Logger;
@@ -19,16 +21,22 @@ public class PromptBuilder {
     private final String defaultSystemPrompt;
     private final MemoryManager memoryManager;
     private final SkillManager skillManager;
+    private final ErrorPatternTracker errorPatternTracker;
+    private final ErrorPatternProperties errorPatternProperties;
 
     public PromptBuilder(
             @Value("${hermes.agent.default-system-prompt:}")
             String defaultSystemPrompt,
             MemoryManager memoryManager,
-            SkillManager skillManager
+            SkillManager skillManager,
+            ErrorPatternTracker errorPatternTracker,
+            ErrorPatternProperties errorPatternProperties
     ) {
         this.defaultSystemPrompt = defaultSystemPrompt;
         this.memoryManager = memoryManager;
         this.skillManager = skillManager;
+        this.errorPatternTracker = errorPatternTracker;
+        this.errorPatternProperties = errorPatternProperties;
     }
 
     /**
@@ -74,6 +82,17 @@ public class PromptBuilder {
         String skillBlock = skillManager.buildSkillPromptBlock(sessionId);
         if (!skillBlock.isEmpty()) {
             prompt.append(skillBlock);
+        }
+
+        // 5. 经验教训
+        java.util.List<String> lessons = errorPatternTracker.getRecentLessons(
+            errorPatternProperties.getMaxLessonsInPrompt());
+        if (!lessons.isEmpty()) {
+            prompt.append("\n\n=== 经验教训 (Lessons Learned) ===\n");
+            prompt.append("以下是你从过去的工具失败中积累的经验，请牢记并避免重复犯错：\n");
+            for (int i = 0; i < lessons.size(); i++) {
+                prompt.append(i + 1).append(". ").append(lessons.get(i)).append("\n");
+            }
         }
 
         String result = prompt.toString();

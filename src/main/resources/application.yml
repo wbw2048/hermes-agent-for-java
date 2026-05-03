@@ -96,6 +96,11 @@ hermes:
       backoff-max-ms: 30000
       tool-timeout-ms: 30000
       tool-error-isolation-enabled: true
+    error-pattern:
+      enabled: true
+      max-lessons-in-prompt: 5
+      repeat-detection-window-hours: 24
+      max-lesson-length: 100
   mcp:
     servers:
       filesystem:

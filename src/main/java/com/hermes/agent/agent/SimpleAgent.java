@@ -9,6 +9,8 @@ import com.hermes.agent.controller.ToolCallInfo;
 import com.hermes.agent.controller.ToolCallTracker;
 import com.hermes.agent.error.ErrorClassifier;
 import com.hermes.agent.error.ErrorClassifier.ErrorType;
+import com.hermes.agent.error.ErrorPatternMemory;
+import com.hermes.agent.error.ErrorPatternTracker;
 import com.hermes.agent.memory.MemoryExtractor;
 import com.hermes.agent.memory.MemoryManager;
 import com.hermes.agent.prompt.PromptBuilder;
@@ -68,6 +70,8 @@ public class SimpleAgent {
     private final TitleGenerationProperties titleProperties;
     private final McpToolProvider mcpToolProvider;
     private final SkillTools skillTools;
+    private final ErrorPatternTracker errorPatternTracker;
+    private final ErrorPatternMemory errorPatternMemory;
 
     /**
      * 创建智能体实例。
@@ -86,6 +90,8 @@ public class SimpleAgent {
      * @param defaultSystemPrompt    系统提示词（向后兼容，若 PromptBuilder 未启用则使用）
      * @param mcpToolProvider        MCP 工具提供者，用于发现外部 MCP 服务器工具
      * @param skillTools             技能管理工具，供 LLM 激活/查看技能
+     * @param errorPatternTracker    错误模式追踪器，记录工具失败模式
+     * @param errorPatternMemory     错误模式记忆提取器，从失败中提取教训
      */
     public SimpleAgent(
             ChatClient.Builder chatClientBuilder,
@@ -106,6 +112,8 @@ public class SimpleAgent {
             TitleGenerationProperties titleProperties,
             McpToolProvider mcpToolProvider,
             SkillTools skillTools,
+            ErrorPatternTracker errorPatternTracker,
+            ErrorPatternMemory errorPatternMemory,
             @Value("${hermes.agent.default-system-prompt:你是一个有帮助的AI助手。请用中文回答问题。}")
             String defaultSystemPrompt
     ) {
@@ -125,6 +133,8 @@ public class SimpleAgent {
         this.titleProperties = titleProperties;
         this.mcpToolProvider = mcpToolProvider;
         this.skillTools = skillTools;
+        this.errorPatternTracker = errorPatternTracker;
+        this.errorPatternMemory = errorPatternMemory;
         List<Object> activeBeans = toolSetManager.getActiveToolBeans(allToolBeans);
         this.toolObjects = buildAllTools(activeBeans, mcpToolProvider);
         log.info("SimpleAgent initialized with {} tool beans (toolsets={}): {}",
@@ -244,8 +254,15 @@ public class SimpleAgent {
             return "抱歉，处理您的请求时出现错误 (" + errorType.name().toLowerCase()
                 + "): " + errorClassifier.getUserMessage(errorType);
         } finally {
+            List<ToolCallInfo> trackedCalls = toolCallTracker.getCalls();
             toolCallTracker.stopTracking();
             SessionContext.clear();
+            // 错误模式记录和教训提取（异步执行，不阻塞响应）
+            final String sessId = sessionId;
+            CompletableFuture.runAsync(() -> {
+                errorPatternTracker.recordErrors(sessId, trackedCalls);
+                errorPatternMemory.extractLessons(trackedCalls, sessId);
+            });
             // 记忆同步和自动提取（异步执行，不阻塞响应）
             if (memoryProperties.isEnabled()) {
                 final String userMsg = userMessage;
@@ -297,6 +314,7 @@ public class SimpleAgent {
         // 第一阶段：完成工具调用循环（Spring AI 内部处理，中间消息不可见）
         toolCallTracker.startTracking();
         SessionContext.set(sessionId);
+        final List<ToolCallInfo>[] trackedCalls = new List[1];
         try {
             ChatResponse toolResponse = llmCallService.callToolLoopWithRetry(systemPrompt, messages, toolObjects);
 
@@ -310,18 +328,19 @@ public class SimpleAgent {
                     .data("工具调用失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType))); }
             catch (IOException ignored) {}
             emitter.complete();
-            toolCallTracker.stopTracking();
+            trackedCalls[0] = toolCallTracker.stopTracking();
             SessionContext.clear();
+            triggerErrorPatternTracking(sessionId, trackedCalls[0]);
             return;
         } finally {
-            toolCallTracker.stopTracking();
+            trackedCalls[0] = toolCallTracker.stopTracking();
             SessionContext.clear();
         }
 
         // 检查是否有工具执行失败
         boolean toolFailed = false;
         String toolErrorResult = null;
-        for (ToolCallInfo tc : toolCallTracker.getCalls()) {
+        for (ToolCallInfo tc : trackedCalls[0]) {
             try {
                 emitter.send(SseEmitter.event().name("tool").data(tc));
             } catch (IOException e) {
@@ -347,6 +366,7 @@ public class SimpleAgent {
             if (isNewSession) {
                 triggerTitleGeneration(sessionId, message, errorMsg);
             }
+            triggerErrorPatternTracking(sessionId, trackedCalls[0]);
             emitter.complete();
             return;
         }
@@ -384,6 +404,7 @@ public class SimpleAgent {
                     log.error(">>> [STREAM] Error, errorType={}: {}", errorType, error.getMessage(), error);
                     safeSend(emitter, SseEmitter.event().name("error")
                             .data("流式响应失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType)));
+                    triggerErrorPatternTracking(sessionId, trackedCalls[0]);
                     emitter.complete();
                 },
                 () -> {
@@ -420,6 +441,7 @@ public class SimpleAgent {
                         });
                     }
                     log.info(">>> [STREAM] Complete, saved={}", saveCompleted[0]);
+                    triggerErrorPatternTracking(sessionId, trackedCalls[0]);
                     emitter.complete();
                 }
             );
@@ -461,6 +483,7 @@ public class SimpleAgent {
         // 第一阶段：工具调用循环
         toolCallTracker.startTracking();
         SessionContext.set(sessionId);
+        final List<ToolCallInfo>[] trackedCalls = new List[1];
         try {
             ChatResponse toolResponse = llmCallService.callToolLoopWithRetry(systemPrompt, messages, toolObjects);
 
@@ -471,18 +494,19 @@ public class SimpleAgent {
             log.error(">>> [WS-ERROR] tool loop failed, errorType={}: {}", errorType, e.getMessage(), e);
             wsSender.accept(WsMessage.error("工具调用失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType)));
             wsSender.accept(WsMessage.done());
-            toolCallTracker.stopTracking();
+            trackedCalls[0] = toolCallTracker.stopTracking();
             SessionContext.clear();
+            triggerErrorPatternTracking(sessionId, trackedCalls[0]);
             return;
         } finally {
-            toolCallTracker.stopTracking();
+            trackedCalls[0] = toolCallTracker.stopTracking();
             SessionContext.clear();
         }
 
         // 检查是否有工具执行失败
         boolean toolFailed = false;
         String toolErrorResult = null;
-        for (ToolCallInfo tc : toolCallTracker.getCalls()) {
+        for (ToolCallInfo tc : trackedCalls[0]) {
             wsSender.accept(WsMessage.toolCall(tc.toolName(), tc.arguments()));
             if (tc.result() != null && !tc.result().isBlank()) {
                 wsSender.accept(WsMessage.toolResult(tc.toolName(), tc.result(), tc.elapsedMs()));
@@ -505,6 +529,7 @@ public class SimpleAgent {
                 triggerTitleGeneration(sessionId, message, "工具执行失败: " + toolErrorResult);
             }
             log.info(">>> [WS] Complete (tool error, skipped LLM explanation)");
+            triggerErrorPatternTracking(sessionId, trackedCalls[0]);
             wsSender.accept(WsMessage.done());
             return;
         }
@@ -532,6 +557,7 @@ public class SimpleAgent {
                     ErrorType errorType = errorClassifier.classify(error);
                     wsSender.accept(WsMessage.error("流式响应失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType)));
                     wsSender.accept(WsMessage.done());
+                    triggerErrorPatternTracking(sessionId, trackedCalls[0]);
                 },
                 () -> {
                     try {
@@ -562,6 +588,7 @@ public class SimpleAgent {
                         });
                     }
                     log.info(">>> [WS] Complete");
+                    triggerErrorPatternTracking(sessionId, trackedCalls[0]);
                     wsSender.accept(WsMessage.done());
                 }
             );
@@ -570,6 +597,7 @@ public class SimpleAgent {
             log.error(">>> [WS] Failed to start stream, errorType={}: {}", errorType, e.getMessage(), e);
             wsSender.accept(WsMessage.error("流式响应失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType)));
             wsSender.accept(WsMessage.done());
+            triggerErrorPatternTracking(sessionId, trackedCalls[0]);
         }
     }
 
@@ -664,6 +692,16 @@ public class SimpleAgent {
      */
     private void triggerTitleGeneration(String sessionId, String userMessage, String assistantResponse) {
         titleGeneratorService.generateTitleAsync(sessionId, userMessage, assistantResponse);
+    }
+
+    /**
+     * 触发异步错误模式记录和教训提取。
+     */
+    private void triggerErrorPatternTracking(String sessionId, List<ToolCallInfo> trackedCalls) {
+        CompletableFuture.runAsync(() -> {
+            errorPatternTracker.recordErrors(sessionId, trackedCalls);
+            errorPatternMemory.extractLessons(trackedCalls, sessionId);
+        });
     }
 
     /**
