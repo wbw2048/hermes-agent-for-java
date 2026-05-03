@@ -858,6 +858,7 @@
                         <span class="mode-label" id="modeLabel">WS</span>
                     </span>
                     <span class="current-session-info" id="currentSessionInfo"></span>
+                    <span class="current-session-info" id="currentWorkspaceInfo" style="cursor:pointer;" title="点击查看工作目录"></span>
                     <span class="status" id="connectionStatus">连接中</span>
                 </div>
             </div>
@@ -1273,6 +1274,7 @@
                     chatContainer.innerHTML = '';
                     addMessageToChat('system', '新会话已创建');
                     updateSessionInfo();
+                    updateWorkspaceInfo();
                     updateActionButtons();
                     await loadSessions();
                     sendButton.disabled = messageInput.value.trim() === '';
@@ -1287,6 +1289,7 @@
             chatContainer.innerHTML = '';
             addMessageToChat('system', '新会话已创建');
             updateSessionInfo();
+            updateWorkspaceInfo();
             renderSessionList();
             sendButton.disabled = messageInput.value.trim() === '';
             messageInput.focus();
@@ -1296,6 +1299,7 @@
             currentSessionId = id;
             chatContainer.innerHTML = '';
             updateSessionInfo();
+            updateWorkspaceInfo();
             updateActionButtons();
             renderSessionList();
 
@@ -1778,6 +1782,27 @@
                 currentSessionInfo.textContent = sess.title || '新会话';
             } else {
                 currentSessionInfo.textContent = currentSessionId ? currentSessionId.slice(0, 8) + '...' : '';
+            }
+        }
+
+        async function updateWorkspaceInfo() {
+            const workspaceInfo = document.getElementById('currentWorkspaceInfo');
+            if (!currentSessionId) {
+                workspaceInfo.textContent = '';
+                return;
+            }
+            try {
+                const r = await fetch(`${API_BASE}/${currentSessionId}/workspace`);
+                if (r.ok) {
+                    const data = await r.json();
+                    // 只显示路径的最后部分
+                    const pathParts = data.path.split('/');
+                    const shortPath = pathParts.slice(-3).join('/');
+                    workspaceInfo.textContent = shortPath;
+                    workspaceInfo.title = data.path;
+                }
+            } catch (e) {
+                workspaceInfo.textContent = '';
             }
         }
 

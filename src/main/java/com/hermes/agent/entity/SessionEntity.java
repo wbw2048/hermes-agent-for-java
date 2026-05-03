@@ -25,6 +25,9 @@ public class SessionEntity {
     @Column(name = "message_count", nullable = false)
     private int messageCount = 0;
 
+    @Column(name = "workspace_dir")
+    private String workspaceDir;
+
     public SessionEntity() {}
 
     public SessionEntity(String id, String title, Instant createdAt, Instant updatedAt) {
@@ -50,4 +53,7 @@ public class SessionEntity {
     public void setMessageCount(int messageCount) { this.messageCount = messageCount; }
 
     public void incrementMessageCount() { this.messageCount++; }
+
+    public String getWorkspaceDir() { return workspaceDir; }
+    public void setWorkspaceDir(String workspaceDir) { this.workspaceDir = workspaceDir; }
 }

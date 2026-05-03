@@ -7,6 +7,7 @@ import com.hermes.agent.entity.MessageEntity;
 import com.hermes.agent.entity.SessionEntity;
 import com.hermes.agent.repository.MessageRepository;
 import com.hermes.agent.repository.SessionRepository;
+import com.hermes.agent.workspace.WorkspaceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.*;
@@ -30,13 +31,16 @@ public class SessionStorageService {
     private final SessionRepository sessionRepository;
     private final MessageRepository messageRepository;
     private final ObjectMapper objectMapper;
+    private final WorkspaceManager workspaceManager;
 
     public SessionStorageService(SessionRepository sessionRepository,
                                  MessageRepository messageRepository,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper,
+                                 WorkspaceManager workspaceManager) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.objectMapper = objectMapper;
+        this.workspaceManager = workspaceManager;
     }
 
     /**
@@ -53,6 +57,13 @@ public class SessionStorageService {
         }
         Instant now = Instant.now();
         SessionEntity session = new SessionEntity(sessionId, title, now, now);
+        // 初始化 workspace
+        try {
+            String workspacePath = workspaceManager.createWorkspace(sessionId).toString();
+            session.setWorkspaceDir(workspacePath);
+        } catch (Exception e) {
+            log.warn("Failed to create workspace for session {}: {}", sessionId, e.getMessage());
+        }
         sessionRepository.save(session);
         log.info("Created session: id={}, title={}", sessionId, title);
     }
@@ -133,6 +144,8 @@ public class SessionStorageService {
     public void deleteSession(String sessionId) {
         messageRepository.deleteBySessionId(sessionId);
         sessionRepository.deleteById(sessionId);
+        // 清理 workspace
+        workspaceManager.deleteWorkspace(sessionId);
         log.info("Deleted session: {}", sessionId);
     }
 

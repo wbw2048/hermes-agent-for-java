@@ -1,8 +1,11 @@
 package com.hermes.agent.tool.builtin;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hermes.agent.workspace.WorkspaceManager;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -13,11 +16,18 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class TerminalToolsTest {
 
-    private final TerminalTools tools = new TerminalTools(10);
+    @TempDir
+    Path tempDir;
+
     private final ObjectMapper mapper = new ObjectMapper();
+
+    private TerminalTools createTools() {
+        return new TerminalTools(10, new NoOpWorkspaceManager(tempDir));
+    }
 
     @Test
     void executeCommandSimpleEcho() throws Exception {
+        TerminalTools tools = createTools();
         String result = tools.executeCommand("echo hello");
 
         @SuppressWarnings("unchecked")
@@ -28,6 +38,7 @@ class TerminalToolsTest {
 
     @Test
     void executeCommandExitCode() throws Exception {
+        TerminalTools tools = createTools();
         String result = tools.executeCommand("bash -c 'exit 42'");
 
         @SuppressWarnings("unchecked")
@@ -37,6 +48,7 @@ class TerminalToolsTest {
 
     @Test
     void executeCommandStderr() throws Exception {
+        TerminalTools tools = createTools();
         String result = tools.executeCommand("bash -c 'echo error >&2; exit 1'");
 
         @SuppressWarnings("unchecked")
@@ -47,6 +59,7 @@ class TerminalToolsTest {
 
     @Test
     void executeCommandEmptyCommand() throws Exception {
+        TerminalTools tools = createTools();
         String result = tools.executeCommand("");
 
         @SuppressWarnings("unchecked")
@@ -56,6 +69,7 @@ class TerminalToolsTest {
 
     @Test
     void executeCommandNullCommand() throws Exception {
+        TerminalTools tools = createTools();
         String result = tools.executeCommand(null);
 
         @SuppressWarnings("unchecked")
@@ -65,6 +79,7 @@ class TerminalToolsTest {
 
     @Test
     void executeCommandDangerousRmRoot() throws Exception {
+        TerminalTools tools = createTools();
         String result = tools.executeCommand("rm -rf /");
 
         @SuppressWarnings("unchecked")
@@ -75,6 +90,7 @@ class TerminalToolsTest {
 
     @Test
     void executeCommandDangerousMkfs() throws Exception {
+        TerminalTools tools = createTools();
         String result = tools.executeCommand("mkfs.ext4 /dev/sda1");
 
         @SuppressWarnings("unchecked")
@@ -85,6 +101,7 @@ class TerminalToolsTest {
 
     @Test
     void executeCommandDangerousForkBomb() throws Exception {
+        TerminalTools tools = createTools();
         String result = tools.executeCommand(":(){:|:&};:");
 
         @SuppressWarnings("unchecked")
@@ -94,9 +111,36 @@ class TerminalToolsTest {
 
     @Test
     void toolHasCorrectAnnotation() throws Exception {
+        TerminalTools tools = createTools();
         var method = TerminalTools.class.getMethod("executeCommand", String.class);
         var annotation = method.getAnnotation(org.springframework.ai.tool.annotation.Tool.class);
         assertNotNull(annotation);
         assertFalse(annotation.description().isBlank());
+    }
+
+    /**
+     * 测试用 WorkspaceManager，指向 tempDir。
+     */
+    private static class NoOpWorkspaceManager extends WorkspaceManager {
+        private final Path testRoot;
+
+        NoOpWorkspaceManager(Path testRoot) {
+            this.testRoot = testRoot;
+        }
+
+        @Override
+        public Path getWorkspaceRoot(String sessionId) {
+            return testRoot;
+        }
+
+        @Override
+        public Path createWorkspace(String sessionId) {
+            try {
+                java.nio.file.Files.createDirectories(testRoot);
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
+            return testRoot;
+        }
     }
 }

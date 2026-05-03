@@ -16,6 +16,7 @@ import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.service.TitleGeneratorService;
 import com.hermes.agent.tool.ToolSetManager;
 import com.hermes.agent.websocket.WsMessage;
+import com.hermes.agent.workspace.SessionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -185,6 +186,7 @@ public class SimpleAgent {
 
         try {
             toolCallTracker.startTracking();
+            SessionContext.set(sessionId);
 
             AssistantMessage assistantMsg = llmCallService.callLlmWithRetry(systemPrompt, messages, toolObjects);
             String content = assistantMsg.getText();
@@ -211,6 +213,7 @@ public class SimpleAgent {
                 + "): " + errorClassifier.getUserMessage(errorType);
         } finally {
             toolCallTracker.stopTracking();
+            SessionContext.clear();
             // 记忆同步和自动提取（异步执行，不阻塞响应）
             if (memoryProperties.isEnabled()) {
                 final String userMsg = userMessage;
@@ -261,6 +264,7 @@ public class SimpleAgent {
 
         // 第一阶段：完成工具调用循环（Spring AI 内部处理，中间消息不可见）
         toolCallTracker.startTracking();
+        SessionContext.set(sessionId);
         try {
             ChatResponse toolResponse = llmCallService.callToolLoopWithRetry(systemPrompt, messages, toolObjects);
 
@@ -275,9 +279,11 @@ public class SimpleAgent {
             catch (IOException ignored) {}
             emitter.complete();
             toolCallTracker.stopTracking();
+            SessionContext.clear();
             return;
         } finally {
             toolCallTracker.stopTracking();
+            SessionContext.clear();
         }
 
         // 检查是否有工具执行失败
@@ -422,6 +428,7 @@ public class SimpleAgent {
 
         // 第一阶段：工具调用循环
         toolCallTracker.startTracking();
+        SessionContext.set(sessionId);
         try {
             ChatResponse toolResponse = llmCallService.callToolLoopWithRetry(systemPrompt, messages, toolObjects);
 
@@ -433,9 +440,11 @@ public class SimpleAgent {
             wsSender.accept(WsMessage.error("工具调用失败 (" + errorType.name().toLowerCase() + "): " + errorClassifier.getUserMessage(errorType)));
             wsSender.accept(WsMessage.done());
             toolCallTracker.stopTracking();
+            SessionContext.clear();
             return;
         } finally {
             toolCallTracker.stopTracking();
+            SessionContext.clear();
         }
 
         // 检查是否有工具执行失败

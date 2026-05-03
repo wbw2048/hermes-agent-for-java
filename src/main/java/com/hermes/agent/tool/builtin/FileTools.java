@@ -1,6 +1,8 @@
 package com.hermes.agent.tool.builtin;
 
 import com.hermes.agent.tool.annotation.ToolSet;
+import com.hermes.agent.workspace.SessionContext;
+import com.hermes.agent.workspace.WorkspaceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
@@ -18,6 +20,7 @@ import java.util.stream.Stream;
  * 文件操作工具：读取、写入、替换和搜索文件。
  * <p>
  * 提供类似 IDE 的文件操作能力，避免 LLM 直接使用 shell 命令（cat/grep/sed）。
+ * 所有路径操作限制在当前会话的 workspace 沙箱内。
  */
 @Service
 @ToolSet("file")
@@ -26,6 +29,12 @@ public class FileTools {
     private static final Logger log = LoggerFactory.getLogger(FileTools.class);
     private static final int DEFAULT_READ_LIMIT = 500;
     private static final int MAX_READ_CHARS = 100_000;
+
+    private final WorkspaceManager workspaceManager;
+
+    public FileTools(WorkspaceManager workspaceManager) {
+        this.workspaceManager = workspaceManager;
+    }
 
     /**
      * 读取文本文件内容，支持分页。
@@ -45,14 +54,13 @@ public class FileTools {
 
         log.info("[TOOL-CALL] readFile: path={}, offset={}, limit={}", path, off, lim);
 
-        // 安全检查
-        String error = PathValidator.validateReadPath(path);
-        if (error != null) {
-            return "{\"error\": \"" + escapeJson(error) + "\"}";
+        // 二进制扩展名检查（保留）
+        if (isBinaryExtension(path)) {
+            return "{\"error\": \"Cannot read binary file '" + escapeJson(path) + "'. Use vision_analyze for images.\"}";
         }
 
         try {
-            Path resolved = PathValidator.resolvePath(path);
+            Path resolved = resolveWorkspacePath(path);
             if (!Files.exists(resolved)) {
                 return suggestSimilarFiles(path);
             }
@@ -101,13 +109,8 @@ public class FileTools {
             @ToolParam(description = "Complete content to write to the file") String content) {
         log.info("[TOOL-CALL] writeFile: path={}, contentLength={}", path, content != null ? content.length() : 0);
 
-        String error = PathValidator.validateWritePath(path);
-        if (error != null) {
-            return "{\"error\": \"" + escapeJson(error) + "\"}";
-        }
-
         try {
-            Path resolved = PathValidator.resolvePath(path);
+            Path resolved = resolveWorkspacePath(path);
             if (resolved.getParent() != null) {
                 Files.createDirectories(resolved.getParent());
             }
@@ -117,6 +120,8 @@ public class FileTools {
                     + "\"bytes_written\": " + (content != null ? content.length() : 0) + "}";
             log.info("[TOOL-RETURN] writeFile: path={}, success", path);
             return result;
+        } catch (WorkspaceManager.WorkspaceSecurityException e) {
+            return "{\"error\": \"" + escapeJson(e.getMessage()) + "\"}";
         } catch (IOException e) {
             return "{\"error\": \"Failed to write file: " + escapeJson(e.getMessage()) + "\"}";
         }
@@ -144,13 +149,8 @@ public class FileTools {
             return "{\"error\": \"path and oldString are required\"}";
         }
 
-        String error = PathValidator.validateWritePath(path);
-        if (error != null) {
-            return "{\"error\": \"" + escapeJson(error) + "\"}";
-        }
-
         try {
-            Path resolved = PathValidator.resolvePath(path);
+            Path resolved = resolveWorkspacePath(path);
             if (!Files.exists(resolved)) {
                 return "{\"error\": \"File not found: " + escapeJson(path) + "\"}";
             }
@@ -207,7 +207,7 @@ public class FileTools {
             @ToolParam(description = "Directory or file to search in (default: current working directory)") String path,
             @ToolParam(description = "Maximum number of results to return (default: 50)") Integer limit) {
         int lim = (limit != null && limit > 0) ? limit : 50;
-        String searchDir = (path != null && !path.isBlank()) ? path : System.getProperty("user.dir");
+        String searchDir = (path != null && !path.isBlank()) ? path : ".";
         String targetType = (target != null && !target.isBlank()) ? target : "content";
 
         log.info("[TOOL-CALL] searchFiles: pattern={}, target={}, dir={}, limit={}", pattern, targetType, searchDir, lim);
@@ -217,7 +217,7 @@ public class FileTools {
         }
 
         try {
-            Path searchPath = PathValidator.resolvePath(searchDir);
+            Path searchPath = resolveWorkspacePath(searchDir);
             if (!Files.exists(searchPath)) {
                 return "{\"error\": \"Search directory not found: " + escapeJson(searchDir) + "\"}";
             }
@@ -270,7 +270,7 @@ public class FileTools {
 
     private String suggestSimilarFiles(String path) {
         try {
-            Path parent = PathValidator.resolvePath(path).getParent();
+            Path parent = resolveWorkspacePath(path).getParent();
             if (parent != null && Files.exists(parent)) {
                 try (Stream<Path> stream = Files.list(parent)) {
                     var similar = stream
@@ -314,6 +314,30 @@ public class FileTools {
         return items.stream()
                 .map(s -> "\"" + escapeJson(s) + "\"")
                 .collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    /**
+     * 将用户路径解析为 workspace 内的绝对路径。
+     */
+    private Path resolveWorkspacePath(String userPath) {
+        String sessionId = SessionContext.get();
+        if (sessionId == null) {
+            // 无会话上下文时回退到旧行为
+            return PathValidator.resolvePath(userPath);
+        }
+        return workspaceManager.resolvePath(sessionId, userPath);
+    }
+
+    private static boolean isBinaryExtension(String filePath) {
+        String ext = Path.of(filePath).toString().toLowerCase();
+        return ext.endsWith(".png") || ext.endsWith(".jpg") || ext.endsWith(".jpeg")
+                || ext.endsWith(".gif") || ext.endsWith(".bmp") || ext.endsWith(".webp")
+                || ext.endsWith(".ico") || ext.endsWith(".tiff") || ext.endsWith(".svg")
+                || ext.endsWith(".pdf") || ext.endsWith(".zip") || ext.endsWith(".tar")
+                || ext.endsWith(".gz") || ext.endsWith(".jar") || ext.endsWith(".war")
+                || ext.endsWith(".class") || ext.endsWith(".so") || ext.endsWith(".dll")
+                || ext.endsWith(".exe") || ext.endsWith(".dylib") || ext.endsWith(".o")
+                || ext.endsWith(".a") || ext.endsWith(".lib");
     }
 
     /**

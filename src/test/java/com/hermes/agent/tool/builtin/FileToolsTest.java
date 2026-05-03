@@ -12,6 +12,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import com.hermes.agent.workspace.SessionContext;
+import com.hermes.agent.workspace.WorkspaceManager;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -20,8 +23,8 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class FileToolsTest {
 
-    private final FileTools tools = new FileTools();
     private final ObjectMapper mapper = new ObjectMapper();
+    private FileTools tools;
 
     @TempDir
     Path tempDir;
@@ -32,6 +35,8 @@ class FileToolsTest {
     void setUp() throws IOException {
         testFile = tempDir.resolve("test.txt");
         Files.writeString(testFile, "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n");
+        // 使用测试用 WorkspaceManager，指向 tempDir
+        tools = new FileTools(new TestableWorkspaceManager(tempDir));
     }
 
     @Test
@@ -169,5 +174,32 @@ class FileToolsTest {
         var annotation = method.getAnnotation(Tool.class);
         assertNotNull(annotation);
         assertFalse(annotation.description().isBlank());
+    }
+
+    /**
+     * 测试用 WorkspaceManager，指向 tempDir。
+     */
+    private static class TestableWorkspaceManager extends WorkspaceManager {
+        private final Path testRoot;
+
+        TestableWorkspaceManager(Path testRoot) {
+            this.testRoot = testRoot;
+        }
+
+        @Override
+        public Path getWorkspaceRoot(String sessionId) {
+            return testRoot;
+        }
+
+        @Override
+        public Path createWorkspace(String sessionId) {
+            Path root = getWorkspaceRoot(sessionId);
+            try {
+                java.nio.file.Files.createDirectories(root);
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
+            return root;
+        }
     }
 }

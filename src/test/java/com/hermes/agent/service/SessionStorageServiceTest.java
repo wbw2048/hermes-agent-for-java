@@ -5,6 +5,7 @@ import com.hermes.agent.entity.MessageEntity;
 import com.hermes.agent.entity.SessionEntity;
 import com.hermes.agent.repository.MessageRepository;
 import com.hermes.agent.repository.SessionRepository;
+import com.hermes.agent.workspace.WorkspaceManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,18 +33,22 @@ class SessionStorageServiceTest {
     @Mock
     private MessageRepository messageRepository;
 
+    @Mock
+    private WorkspaceManager workspaceManager;
+
     private SessionStorageService service;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        service = new SessionStorageService(sessionRepository, messageRepository, objectMapper);
+        service = new SessionStorageService(sessionRepository, messageRepository, objectMapper, workspaceManager);
     }
 
     @Test
     void createSessionCreatesNewSession() {
         when(sessionRepository.existsById("s1")).thenReturn(false);
+        when(workspaceManager.createWorkspace("s1")).thenReturn(java.nio.file.Path.of("/tmp/test-workspaces/s1"));
 
         service.createSession("s1", "Test Session");
 

@@ -1,6 +1,8 @@
 package com.hermes.agent.tool.builtin;
 
 import com.hermes.agent.tool.annotation.ToolSet;
+import com.hermes.agent.workspace.SessionContext;
+import com.hermes.agent.workspace.WorkspaceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
@@ -11,6 +13,8 @@ import org.springframework.stereotype.Service;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -18,6 +22,7 @@ import java.util.concurrent.TimeUnit;
  * 终端命令执行工具。
  * <p>
  * 支持在本地执行 shell 命令，带超时保护和危险命令拦截。
+ * 命令执行的工作目录锁定在当前会话的 workspace 沙箱内。
  */
 @Service
 @ToolSet("terminal")
@@ -37,10 +42,13 @@ public class TerminalTools {
     );
 
     private final long timeoutSeconds;
+    private final WorkspaceManager workspaceManager;
 
     public TerminalTools(
-            @Value("${hermes.tools.terminal.timeout-seconds:60}") long timeoutSeconds) {
+            @Value("${hermes.tools.terminal.timeout-seconds:60}") long timeoutSeconds,
+            WorkspaceManager workspaceManager) {
         this.timeoutSeconds = timeoutSeconds;
+        this.workspaceManager = workspaceManager;
         log.info("TerminalTools initialized with timeout={}s", timeoutSeconds);
     }
 
@@ -67,10 +75,12 @@ public class TerminalTools {
 
         Process process = null;
         try {
-            process = new ProcessBuilder()
+            Path cwd = getWorkspaceCwd();
+            ProcessBuilder pb = new ProcessBuilder()
                     .command("bash", "-c", command)
-                    .redirectErrorStream(false)
-                    .start();
+                    .directory(cwd.toFile())
+                    .redirectErrorStream(false);
+            process = pb.start();
 
             // 读取 stdout 和 stderr
             StringBuilder stdout = new StringBuilder();
@@ -118,6 +128,21 @@ public class TerminalTools {
             }
         }
         return null;
+    }
+
+    /**
+     * 获取命令执行的工作目录。有会话上下文时返回 workspace root，否则返回当前系统目录。
+     */
+    private Path getWorkspaceCwd() {
+        String sessionId = SessionContext.get();
+        if (sessionId != null) {
+            Path workspaceRoot = workspaceManager.getWorkspaceRoot(sessionId);
+            if (!Files.exists(workspaceRoot)) {
+                workspaceManager.createWorkspace(sessionId);
+            }
+            return workspaceRoot;
+        }
+        return Path.of(System.getProperty("user.dir"));
     }
 
     private static String escapeJson(String s) {
