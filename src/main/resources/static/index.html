@@ -851,6 +851,8 @@
                 <div class="header-right">
                     <button class="action-btn hidden" id="compressBtn" title="上下文压缩">压缩</button>
                     <button class="action-btn hidden" id="clearHistoryBtn" title="清除历史">清空</button>
+                    <button class="action-btn hidden" id="curateBtn" title="对话整理">整理</button>
+                    <button class="action-btn hidden" id="exportBtn" title="导出会话">导出</button>
                     <button class="action-btn" id="settingsBtn" title="人设设置">设置</button>
                     <span class="mode-toggle" id="modeToggle" title="切换传输模式">
                         <span class="mode-label" id="modeLabel">WS</span>
@@ -909,6 +911,7 @@
                 <button class="tab-btn active" id="tabPersona" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--accent);color:#fff;font-size:13px;font-weight:500;cursor:pointer;">人设</button>
                 <button class="tab-btn" id="tabMemory" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">记忆</button>
                 <button class="tab-btn" id="tabContext" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">上下文文件</button>
+                <button class="tab-btn" id="tabRateLimit" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">API 用量</button>
             </div>
             <!-- 人设 Tab -->
             <div id="personaTabContent">
@@ -945,6 +948,16 @@
                     <button class="action-btn" onclick="createContextFile('CLAUDE.md')">+ CLAUDE.md</button>
                 </div>
                 <div class="persona-status" id="contextStatus"></div>
+            </div>
+            <!-- API 用量 Tab -->
+            <div id="rateLimitTabContent" style="display:none;">
+                <p class="persona-hint">查看 LLM API 的速率限制使用情况（RPM/TPM）。</p>
+                <div id="rateLimitDisplay" style="background:var(--surface-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;min-height:150px;">
+                    <p style="color:var(--text-secondary);font-size:13px;">加载中...</p>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="action-btn" id="refreshRateLimitBtn" style="font-size:12px;">刷新</button>
+                </div>
             </div>
             <!-- 上下文文件编辑弹窗 -->
             <div class="modal-overlay" id="contextEditOverlay" style="position:fixed;">
@@ -1092,6 +1105,8 @@
         const newSessionBtn = document.getElementById('newSessionBtn');
         const compressBtn = document.getElementById('compressBtn');
         const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+        const curateBtn = document.getElementById('curateBtn');
+        const exportBtn = document.getElementById('exportBtn');
         const titleModal = document.getElementById('titleModal');
         const titleInput = document.getElementById('titleInput');
         const titleCancelBtn = document.getElementById('titleCancelBtn');
@@ -1159,6 +1174,8 @@
             newSessionBtn.addEventListener('click', createNewSession);
             compressBtn.addEventListener('click', handleCompress);
             clearHistoryBtn.addEventListener('click', handleClearHistory);
+            curateBtn.addEventListener('click', handleCurate);
+            exportBtn.addEventListener('click', handleExport);
 
             // 模式切换
             const modeToggle = document.getElementById('modeToggle');
@@ -1191,6 +1208,7 @@
             document.getElementById('tabPersona').addEventListener('click', () => switchPersonaTab('persona'));
             document.getElementById('tabMemory').addEventListener('click', () => switchPersonaTab('memory'));
             document.getElementById('tabContext').addEventListener('click', () => switchPersonaTab('context'));
+            document.getElementById('tabRateLimit').addEventListener('click', () => switchPersonaTab('rateLimit'));
 
             // 上下文文件编辑弹窗
             document.getElementById('contextEditCancelBtn').addEventListener('click', closeContextEditOverlay);
@@ -1466,9 +1484,11 @@
             const tabPersona = document.getElementById('tabPersona');
             const tabMemory = document.getElementById('tabMemory');
             const tabContext = document.getElementById('tabContext');
+            const tabRateLimit = document.getElementById('tabRateLimit');
             const personaTabContent = document.getElementById('personaTabContent');
             const memoryTabContent = document.getElementById('memoryTabContent');
             const contextTabContent = document.getElementById('contextTabContent');
+            const rateLimitTabContent = document.getElementById('rateLimitTabContent');
             const personaModalActions = document.getElementById('personaModalActions');
 
             // Reset all tabs
@@ -1478,9 +1498,12 @@
             tabMemory.style.color = 'var(--text)';
             tabContext.style.background = 'var(--surface-elevated)';
             tabContext.style.color = 'var(--text)';
+            tabRateLimit.style.background = 'var(--surface-elevated)';
+            tabRateLimit.style.color = 'var(--text)';
             personaTabContent.style.display = 'none';
             memoryTabContent.style.display = 'none';
             contextTabContent.style.display = 'none';
+            rateLimitTabContent.style.display = 'none';
 
             if (tab === 'persona') {
                 tabPersona.style.background = 'var(--accent)';
@@ -1493,12 +1516,18 @@
                 memoryTabContent.style.display = 'block';
                 personaModalActions.style.display = 'flex';
                 loadMemoryFiles();
-            } else {
+            } else if (tab === 'context') {
                 tabContext.style.background = 'var(--accent)';
                 tabContext.style.color = '#fff';
                 contextTabContent.style.display = 'block';
                 personaModalActions.style.display = 'none';
                 loadContextFiles();
+            } else if (tab === 'rateLimit') {
+                tabRateLimit.style.background = 'var(--accent)';
+                tabRateLimit.style.color = '#fff';
+                rateLimitTabContent.style.display = 'block';
+                personaModalActions.style.display = 'none';
+                loadRateLimits();
             }
         }
 
@@ -1757,6 +1786,8 @@
             const hasSession = currentSessionId != null && sessionsCache.length > 0;
             compressBtn.classList.toggle('hidden', !hasSession);
             clearHistoryBtn.classList.toggle('hidden', !hasSession);
+            curateBtn.classList.toggle('hidden', !hasSession);
+            exportBtn.classList.toggle('hidden', !hasSession);
         }
 
         // ── 压缩 & 清空历史 ──
@@ -1789,6 +1820,82 @@
                 addMessageToChat('system', '清除历史失败: ' + e.message);
             }
         }
+
+        async function handleCurate() {
+            if (!currentSessionId) return;
+            try {
+                const r = await fetch(`${API_BASE}/${currentSessionId}/curate`, { method: 'POST' });
+                if (r.ok) {
+                    const data = await r.json();
+                    addMessageToChat('system', `对话整理完成：${data.messagesBefore} → ${data.messagesAfter} 条消息（优化 ${data.messagesRemoved} 条）`);
+                } else {
+                    addMessageToChat('system', '会话无消息或整理失败');
+                }
+            } catch (e) {
+                addMessageToChat('system', '整理请求失败: ' + e.message);
+            }
+        }
+
+        async function handleExport() {
+            if (!currentSessionId) return;
+            // 创建隐藏下载链接
+            const a = document.createElement('a');
+            a.href = `${API_BASE}/${currentSessionId}/export?format=markdown`;
+            a.download = `conversation-${currentSessionId}.md`;
+            a.click();
+        }
+
+        // ── 速率限制展示 ──
+
+        async function loadRateLimits() {
+            const display = document.getElementById('rateLimitDisplay');
+            try {
+                const r = await fetch('/api/usage/rate-limits');
+                if (r.ok) {
+                    const data = await r.json();
+                    const providers = data.providers || {};
+                    const keys = Object.keys(providers);
+                    if (keys.length === 0) {
+                        display.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">暂无速率限制数据，请先发送一条消息调用 LLM API。</p>';
+                        return;
+                    }
+                    let html = '';
+                    for (const key of keys) {
+                        const p = providers[key];
+                        html += `<div style="margin-bottom:12px;"><b style="font-size:14px;">${escapeHtml(p.provider || key)}</b>`;
+                        html += `<div style="font-size:11px;color:var(--text-secondary);">更新于 ${formatTime(p.capturedAt)}</div>`;
+                        html += renderRateLimitBucket('Requests/min', p.requestsMin);
+                        html += renderRateLimitBucket('Requests/hr', p.requestsHour);
+                        html += renderRateLimitBucket('Tokens/min', p.tokensMin);
+                        html += renderRateLimitBucket('Tokens/hr', p.tokensHour);
+                        html += '</div>';
+                    }
+                    display.innerHTML = html;
+                } else {
+                    display.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">加载失败</p>';
+                }
+            } catch (e) {
+                display.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">加载失败: ' + escapeHtml(e.message) + '</p>';
+            }
+        }
+
+        function renderRateLimitBucket(label, bucket) {
+            if (!bucket || bucket.limit === 0) return '';
+            const pct = Math.min(bucket.usagePct, 100);
+            const barWidth = 20;
+            const filled = Math.round(pct / 100 * barWidth);
+            const empty = barWidth - filled;
+            const bar = '█'.repeat(filled) + '░'.repeat(empty);
+            const color = pct > 80 ? 'var(--error)' : pct > 50 ? 'var(--warning)' : 'var(--success)';
+            return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;">
+                <span style="width:90px;">${escapeHtml(label)}</span>
+                <span style="font-family:monospace;color:${color};">${bar}</span>
+                <span>${bucket.used}/${bucket.limit} (${Math.round(pct)}%)</span>
+                <span style="color:var(--text-secondary);">剩余 ${bucket.remaining}</span>
+            </div>`;
+        }
+
+        document.getElementById('refreshRateLimitBtn').addEventListener('click', loadRateLimits);
 
         // ── 发送消息（流式） ──
 

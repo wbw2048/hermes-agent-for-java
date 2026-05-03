@@ -4,6 +4,8 @@ import com.hermes.agent.agent.SimpleAgent;
 import com.hermes.agent.entity.SessionEntity;
 import com.hermes.agent.memory.MemoryStore;
 import com.hermes.agent.prompt.ContextFileDiscovery;
+import com.hermes.agent.service.ConversationCurator;
+import com.hermes.agent.service.SessionExporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
@@ -35,10 +37,15 @@ public class ConversationController {
 
     private final SimpleAgent simpleAgent;
     private final MemoryStore memoryStore;
+    private final ConversationCurator conversationCurator;
+    private final SessionExporter sessionExporter;
 
-    public ConversationController(@Lazy SimpleAgent simpleAgent, MemoryStore memoryStore) {
+    public ConversationController(@Lazy SimpleAgent simpleAgent, MemoryStore memoryStore,
+                                  ConversationCurator conversationCurator, SessionExporter sessionExporter) {
         this.simpleAgent = simpleAgent;
         this.memoryStore = memoryStore;
+        this.conversationCurator = conversationCurator;
+        this.sessionExporter = sessionExporter;
     }
 
     /**
@@ -305,6 +312,60 @@ public class ConversationController {
         memoryStore.clear("memory");
         memoryStore.clear("user");
         return ResponseEntity.ok(Map.of("status", "success", "message", "all memory cleared"));
+    }
+
+    /**
+     * 导出会话为 JSON 或 Markdown。
+     * GET /api/conversations/{sessionId}/export?format=json|markdown
+     */
+    @GetMapping("/{sessionId}/export")
+    public ResponseEntity<String> exportSession(
+            @PathVariable String sessionId,
+            @RequestParam(defaultValue = "json") String format
+    ) {
+        SessionEntity session = simpleAgent.getSessionStorageService().getSession(sessionId);
+        if (session == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        String content;
+        String contentType;
+        if ("markdown".equalsIgnoreCase(format)) {
+            content = sessionExporter.exportMarkdown(sessionId);
+            contentType = "text/markdown";
+        } else {
+            content = sessionExporter.exportJson(sessionId);
+            contentType = "application/json";
+        }
+
+        return ResponseEntity.ok()
+                .header("Content-Type", contentType + "; charset=utf-8")
+                .header("Content-Disposition",
+                        "attachment; filename=\"conversation-" + sessionId + "." +
+                                ("markdown".equalsIgnoreCase(format) ? "md" : "json") + "\"")
+                .body(content);
+    }
+
+    /**
+     * 对话整理 — 去除无效轮次、合并短消息。
+     * POST /api/conversations/{sessionId}/curate
+     */
+    @PostMapping("/{sessionId}/curate")
+    public ResponseEntity<Map<String, Object>> curateSession(@PathVariable String sessionId) {
+        List<Message> messages = simpleAgent.getConversationHistory(sessionId);
+        if (messages.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "会话无消息"));
+        }
+
+        ConversationCurator.CurateResult result = conversationCurator.curate(messages);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("sessionId", sessionId);
+        response.put("messagesBefore", result.messagesBefore());
+        response.put("messagesAfter", result.messagesAfter());
+        response.put("messagesRemoved", result.messagesBefore() - result.messagesAfter());
+        return ResponseEntity.ok(response);
     }
 
     /**

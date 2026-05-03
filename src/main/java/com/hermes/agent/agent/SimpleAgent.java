@@ -4,6 +4,7 @@ import com.hermes.agent.compressor.ContextCompressor;
 import com.hermes.agent.compressor.TokenEstimator;
 import com.hermes.agent.config.ContextCompressionProperties;
 import com.hermes.agent.config.MemoryProperties;
+import com.hermes.agent.config.TitleGenerationProperties;
 import com.hermes.agent.controller.ToolCallInfo;
 import com.hermes.agent.controller.ToolCallTracker;
 import com.hermes.agent.error.ErrorClassifier;
@@ -12,6 +13,7 @@ import com.hermes.agent.memory.MemoryExtractor;
 import com.hermes.agent.memory.MemoryManager;
 import com.hermes.agent.prompt.PromptBuilder;
 import com.hermes.agent.service.SessionStorageService;
+import com.hermes.agent.service.TitleGeneratorService;
 import com.hermes.agent.tool.ToolSetManager;
 import com.hermes.agent.websocket.WsMessage;
 import org.slf4j.Logger;
@@ -58,6 +60,8 @@ public class SimpleAgent {
     private final MemoryManager memoryManager;
     private final MemoryExtractor memoryExtractor;
     private final MemoryProperties memoryProperties;
+    private final TitleGeneratorService titleGeneratorService;
+    private final TitleGenerationProperties titleProperties;
 
     /**
      * 创建智能体实例。
@@ -90,6 +94,8 @@ public class SimpleAgent {
             MemoryManager memoryManager,
             MemoryExtractor memoryExtractor,
             MemoryProperties memoryProperties,
+            TitleGeneratorService titleGeneratorService,
+            TitleGenerationProperties titleProperties,
             @Value("${hermes.agent.default-system-prompt:你是一个有帮助的AI助手。请用中文回答问题。}")
             String defaultSystemPrompt
     ) {
@@ -105,6 +111,8 @@ public class SimpleAgent {
         this.memoryManager = memoryManager;
         this.memoryExtractor = memoryExtractor;
         this.memoryProperties = memoryProperties;
+        this.titleGeneratorService = titleGeneratorService;
+        this.titleProperties = titleProperties;
         List<Object> activeBeans = toolSetManager.getActiveToolBeans(allToolBeans);
         this.toolObjects = wrapToolsForTracking(activeBeans);
         log.info("SimpleAgent initialized with {} tool beans (toolsets={}): {}",
@@ -190,9 +198,9 @@ public class SimpleAgent {
             List<Message> newMessages = messages.subList(historySizeBefore, messages.size());
             sessionStorageService.saveMessages(sessionId, new ArrayList<>(newMessages));
 
-            // 首次对话自动生成会话标题
+            // 首次对话自动生成会话标题（异步，不阻塞响应）
             if (isNewSession) {
-                autoGenerateTitle(sessionId, userMessage);
+                triggerTitleGeneration(sessionId, userMessage, content);
             }
 
             return content != null ? content : "";
@@ -299,7 +307,7 @@ public class SimpleAgent {
                 catch (Exception e) { log.error(">>> [STREAM] Failed to save error response: {}", e.getMessage()); }
             }
             if (isNewSession) {
-                autoGenerateTitle(sessionId, message);
+                triggerTitleGeneration(sessionId, message, errorMsg);
             }
             emitter.complete();
             return;
@@ -358,7 +366,7 @@ public class SimpleAgent {
                             log.info(">>> [STREAM] Saved {} messages (user + final assistant response)", saveNewMessages.size());
                         }
                         if (isNewSession) {
-                            autoGenerateTitle(sessionId, message);
+                            triggerTitleGeneration(sessionId, message, finalText);
                         }
                         saveCompleted[0] = true;
                     } catch (Exception e) {
@@ -453,7 +461,7 @@ public class SimpleAgent {
                 catch (Exception e) { log.error(">>> [WS] Failed to save error response: {}", e.getMessage()); }
             }
             if (isNewSession) {
-                autoGenerateTitle(sessionId, message);
+                triggerTitleGeneration(sessionId, message, "工具执行失败: " + toolErrorResult);
             }
             log.info(">>> [WS] Complete (tool error, skipped LLM explanation)");
             wsSender.accept(WsMessage.done());
@@ -498,7 +506,7 @@ public class SimpleAgent {
                             log.info(">>> [WS] Saved {} messages", saveNewMessages.size());
                         }
                         if (isNewSession) {
-                            autoGenerateTitle(sessionId, message);
+                            triggerTitleGeneration(sessionId, message, finalText);
                         }
                     } catch (Exception e) {
                         log.error(">>> [WS] Failed to save response: {}", e.getMessage(), e);
@@ -606,20 +614,10 @@ public class SimpleAgent {
     }
 
     /**
-     * 根据用户第一条消息自动生成会话标题。
-     * 截取前 50 个字符，去除首尾空白。
+     * 触发异步标题生成（LLM 驱动）。
      */
-    private void autoGenerateTitle(String sessionId, String userMessage) {
-        try {
-            String title = userMessage.trim();
-            if (title.length() > 50) {
-                title = title.substring(0, 50);
-            }
-            sessionStorageService.updateSessionTitle(sessionId, title);
-            log.info(">>> [AUTO-TITLE] Generated title for session {}: '{}'", sessionId, title);
-        } catch (Exception e) {
-            log.warn(">>> [AUTO-TITLE] Failed to generate title for session {}: {}", sessionId, e.getMessage());
-        }
+    private void triggerTitleGeneration(String sessionId, String userMessage, String assistantResponse) {
+        titleGeneratorService.generateTitleAsync(sessionId, userMessage, assistantResponse);
     }
 
     /**

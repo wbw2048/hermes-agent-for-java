@@ -138,6 +138,8 @@ class SimpleAgentTest {
                 memManager,
                 memExtractor,
                 memProps,
+                mock(com.hermes.agent.service.TitleGeneratorService.class),
+                mock(com.hermes.agent.config.TitleGenerationProperties.class),
                 "You are a helpful assistant."
         );
     }

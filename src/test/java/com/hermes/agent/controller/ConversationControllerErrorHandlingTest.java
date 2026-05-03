@@ -3,6 +3,8 @@ package com.hermes.agent.controller;
 import com.hermes.agent.agent.SimpleAgent;
 import com.hermes.agent.config.ErrorHandlingProperties;
 import com.hermes.agent.memory.MemoryStore;
+import com.hermes.agent.service.ConversationCurator;
+import com.hermes.agent.service.SessionExporter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -28,10 +30,12 @@ class ConversationControllerErrorHandlingTest {
     void setUp() {
         agent = mock(SimpleAgent.class);
         MemoryStore memoryStore = mock(MemoryStore.class);
+        ConversationCurator curator = mock(ConversationCurator.class);
+        SessionExporter exporter = mock(SessionExporter.class);
         ErrorHandlingProperties props = new ErrorHandlingProperties();
         when(agent.getToolCallTracker()).thenReturn(new ToolCallTracker(props));
         when(memoryStore.getAllEntries()).thenReturn(java.util.Map.of());
-        mockMvc = MockMvcBuilders.standaloneSetup(new ConversationController(agent, memoryStore)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new ConversationController(agent, memoryStore, curator, exporter)).build();
     }
 
     @Test
