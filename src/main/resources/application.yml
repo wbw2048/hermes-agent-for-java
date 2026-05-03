@@ -96,3 +96,12 @@ hermes:
       backoff-max-ms: 30000
       tool-timeout-ms: 30000
       tool-error-isolation-enabled: true
+  mcp:
+    servers:
+      filesystem:
+        command: "npx"
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+        env: {}
+        timeout-seconds: 120
+        connect-timeout-seconds: 60
+        enabled: false

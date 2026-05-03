@@ -102,6 +102,10 @@ yarn-error.log*
 dist/
 build/
 .webpack/
+package.json
+package-lock.json
+*.ts
+!tsconfig.json
 
 # Python virtual environments
 venv/

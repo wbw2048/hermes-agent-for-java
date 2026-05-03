@@ -13,6 +13,7 @@ import com.hermes.agent.memory.MemoryManager;
 import com.hermes.agent.memory.MemoryStore;
 import com.hermes.agent.memory.MemoryThreatDetector;
 import com.hermes.agent.prompt.PromptBuilder;
+import com.hermes.agent.mcp.McpToolProvider;
 import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.tool.ToolSetManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,6 +72,9 @@ class SimpleAgentTest {
     @Mock
     private LlmCallService llmCallService;
 
+    @Mock
+    private McpToolProvider mcpToolProvider;
+
     private SimpleAgent agent;
 
     @BeforeEach
@@ -103,6 +107,7 @@ class SimpleAgentTest {
                 .thenReturn(assistantMessage);
         when(llmCallService.callToolLoopWithRetry(anyString(), anyList(), any(Object[].class)))
                 .thenReturn(chatResponse);
+        when(mcpToolProvider.discoverAllTools()).thenReturn(List.of());
     }
 
     private void createAgent(Object... tools) {
@@ -140,6 +145,7 @@ class SimpleAgentTest {
                 memProps,
                 mock(com.hermes.agent.service.TitleGeneratorService.class),
                 mock(com.hermes.agent.config.TitleGenerationProperties.class),
+                mcpToolProvider,
                 "You are a helpful assistant."
         );
     }

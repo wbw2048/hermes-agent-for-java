@@ -913,6 +913,7 @@
                 <button class="tab-btn" id="tabMemory" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">记忆</button>
                 <button class="tab-btn" id="tabContext" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">上下文文件</button>
                 <button class="tab-btn" id="tabRateLimit" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">API 用量</button>
+                <button class="tab-btn" id="tabMcp" style="flex:1;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-elevated);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">MCP</button>
             </div>
             <!-- 人设 Tab -->
             <div id="personaTabContent">
@@ -958,6 +959,16 @@
                 </div>
                 <div style="display:flex;gap:8px;margin-top:8px;">
                     <button class="action-btn" id="refreshRateLimitBtn" style="font-size:12px;">刷新</button>
+                </div>
+            </div>
+            <!-- MCP 服务器 Tab -->
+            <div id="mcpTabContent" style="display:none;">
+                <p class="persona-hint">管理外部 MCP 服务器的连接状态。MCP 工具会出现在智能体的可用工具列表中。</p>
+                <div id="mcpServerList" style="min-height:150px;">
+                    <p style="color:var(--text-secondary);font-size:13px;">加载中...</p>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="action-btn" id="refreshMcpBtn" style="font-size:12px;">刷新</button>
                 </div>
             </div>
             <!-- 上下文文件编辑弹窗 -->
@@ -1210,6 +1221,7 @@
             document.getElementById('tabMemory').addEventListener('click', () => switchPersonaTab('memory'));
             document.getElementById('tabContext').addEventListener('click', () => switchPersonaTab('context'));
             document.getElementById('tabRateLimit').addEventListener('click', () => switchPersonaTab('rateLimit'));
+            document.getElementById('tabMcp').addEventListener('click', () => switchPersonaTab('mcp'));
 
             // 上下文文件编辑弹窗
             document.getElementById('contextEditCancelBtn').addEventListener('click', closeContextEditOverlay);
@@ -1489,10 +1501,12 @@
             const tabMemory = document.getElementById('tabMemory');
             const tabContext = document.getElementById('tabContext');
             const tabRateLimit = document.getElementById('tabRateLimit');
+            const tabMcp = document.getElementById('tabMcp');
             const personaTabContent = document.getElementById('personaTabContent');
             const memoryTabContent = document.getElementById('memoryTabContent');
             const contextTabContent = document.getElementById('contextTabContent');
             const rateLimitTabContent = document.getElementById('rateLimitTabContent');
+            const mcpTabContent = document.getElementById('mcpTabContent');
             const personaModalActions = document.getElementById('personaModalActions');
 
             // Reset all tabs
@@ -1504,10 +1518,13 @@
             tabContext.style.color = 'var(--text)';
             tabRateLimit.style.background = 'var(--surface-elevated)';
             tabRateLimit.style.color = 'var(--text)';
+            tabMcp.style.background = 'var(--surface-elevated)';
+            tabMcp.style.color = 'var(--text)';
             personaTabContent.style.display = 'none';
             memoryTabContent.style.display = 'none';
             contextTabContent.style.display = 'none';
             rateLimitTabContent.style.display = 'none';
+            mcpTabContent.style.display = 'none';
 
             if (tab === 'persona') {
                 tabPersona.style.background = 'var(--accent)';
@@ -1532,6 +1549,12 @@
                 rateLimitTabContent.style.display = 'block';
                 personaModalActions.style.display = 'none';
                 loadRateLimits();
+            } else if (tab === 'mcp') {
+                tabMcp.style.background = 'var(--accent)';
+                tabMcp.style.color = '#fff';
+                mcpTabContent.style.display = 'block';
+                personaModalActions.style.display = 'none';
+                loadMcpServers();
             }
         }
 
@@ -2218,6 +2241,72 @@
                 connectWebSocket();
             }
         }
+
+        // ── MCP 服务器管理 ──
+
+        async function loadMcpServers() {
+            const el = document.getElementById('mcpServerList');
+            try {
+                const r = await fetch(`/api/mcp/servers`);
+                if (!r.ok) { el.innerHTML = '<p style="color:var(--error);font-size:13px;">加载失败</p>'; return; }
+                const data = await r.json();
+                renderMcpServers(data.servers || []);
+            } catch (e) {
+                el.innerHTML = '<p style="color:var(--error);font-size:13px;">无法连接 API</p>';
+            }
+        }
+
+        function renderMcpServers(servers) {
+            const el = document.getElementById('mcpServerList');
+            if (!servers || servers.length === 0) {
+                el.innerHTML = '<p style="color:var(--text-secondary);font-size:13px;">未配置 MCP 服务器。在 application.yml 的 hermes.mcp.servers 中添加配置。</p>';
+                return;
+            }
+            el.innerHTML = servers.map(s => {
+                const stateColor = s.state === 'CONNECTED' ? 'var(--success)' : s.state === 'ERROR' ? 'var(--error)' : 'var(--text-tertiary)';
+                const stateLabel = s.state === 'CONNECTED' ? '已连接' : s.state === 'ERROR' ? '错误' : s.state === 'CONNECTING' ? '连接中' : '未连接';
+                return `
+                    <div style="background:var(--surface-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <strong style="font-size:14px;">${escapeHtml(s.name)}</strong>
+                                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${stateColor};margin-left:8px;"></span>
+                                <span style="font-size:12px;color:var(--text-secondary);margin-left:4px;">${stateLabel}</span>
+                            </div>
+                            <div style="display:flex;gap:4px;">
+                                ${s.state !== 'CONNECTED' ? `<button class="action-btn" style="font-size:11px;padding:4px 8px;" onclick="connectMcpServer('${s.name}')">连接</button>` : ''}
+                                ${s.state === 'CONNECTED' ? `<button class="action-btn" style="font-size:11px;padding:4px 8px;" onclick="disconnectMcpServer('${s.name}')">断开</button>` : ''}
+                                <button class="action-btn" style="font-size:11px;padding:4px 8px;" onclick="reconnectMcpServer('${s.name}')">重连</button>
+                            </div>
+                        </div>
+                        <div style="font-size:12px;color:var(--text-tertiary);margin-top:6px;">
+                            命令: ${escapeHtml(s.command || '-')} ${escapeHtml((s.args || []).join(' '))}
+                            · 工具: ${s.toolCount || 0}
+                            ${s.lastError ? ` · <span style="color:var(--error);">错误: ${escapeHtml(s.lastError)}</span>` : ''}
+                        </div>
+                        ${s.toolNames && s.toolNames.length > 0 ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">${s.toolNames.map(t => '<code style="background:var(--surface);padding:1px 4px;border-radius:3px;margin-right:4px;">' + escapeHtml(t) + '</code>').join('')}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function connectMcpServer(name) {
+            const r = await fetch(`/api/mcp/servers/${name}/connect`, { method: 'POST' });
+            const data = await r.json();
+            loadMcpServers();
+        }
+
+        async function disconnectMcpServer(name) {
+            await fetch(`/api/mcp/servers/${name}/disconnect`, { method: 'POST' });
+            loadMcpServers();
+        }
+
+        async function reconnectMcpServer(name) {
+            await fetch(`/api/mcp/servers/${name}/reconnect`, { method: 'POST' });
+            setTimeout(loadMcpServers, 1500);
+        }
+
+        document.getElementById('refreshMcpBtn').addEventListener('click', loadMcpServers);
     </script>
 </body>
 </html>

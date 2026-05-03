@@ -51,6 +51,13 @@
             <version>${spring-ai.version}</version>
         </dependency>
 
+        <!-- MCP Client SDK (原生 SDK，用于细粒度生命周期管理) -->
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp</artifactId>
+            <version>0.14.0</version>
+        </dependency>
+
         <!-- SQLite -->
         <dependency>
             <groupId>org.xerial</groupId>

@@ -14,6 +14,7 @@ import com.hermes.agent.memory.MemoryManager;
 import com.hermes.agent.prompt.PromptBuilder;
 import com.hermes.agent.service.SessionStorageService;
 import com.hermes.agent.service.TitleGeneratorService;
+import com.hermes.agent.mcp.McpToolProvider;
 import com.hermes.agent.tool.ToolSetManager;
 import com.hermes.agent.websocket.WsMessage;
 import com.hermes.agent.workspace.SessionContext;
@@ -22,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.*;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -63,6 +65,7 @@ public class SimpleAgent {
     private final MemoryProperties memoryProperties;
     private final TitleGeneratorService titleGeneratorService;
     private final TitleGenerationProperties titleProperties;
+    private final McpToolProvider mcpToolProvider;
 
     /**
      * 创建智能体实例。
@@ -79,6 +82,7 @@ public class SimpleAgent {
      * @param llmCallService         LLM 调用服务（含重试机制）
      * @param errorClassifier        错误分类器
      * @param defaultSystemPrompt    系统提示词（向后兼容，若 PromptBuilder 未启用则使用）
+     * @param mcpToolProvider        MCP 工具提供者，用于发现外部 MCP 服务器工具
      */
     public SimpleAgent(
             ChatClient.Builder chatClientBuilder,
@@ -97,6 +101,7 @@ public class SimpleAgent {
             MemoryProperties memoryProperties,
             TitleGeneratorService titleGeneratorService,
             TitleGenerationProperties titleProperties,
+            McpToolProvider mcpToolProvider,
             @Value("${hermes.agent.default-system-prompt:你是一个有帮助的AI助手。请用中文回答问题。}")
             String defaultSystemPrompt
     ) {
@@ -114,25 +119,44 @@ public class SimpleAgent {
         this.memoryProperties = memoryProperties;
         this.titleGeneratorService = titleGeneratorService;
         this.titleProperties = titleProperties;
+        this.mcpToolProvider = mcpToolProvider;
         List<Object> activeBeans = toolSetManager.getActiveToolBeans(allToolBeans);
-        this.toolObjects = wrapToolsForTracking(activeBeans);
+        this.toolObjects = buildAllTools(activeBeans, mcpToolProvider);
         log.info("SimpleAgent initialized with {} tool beans (toolsets={}): {}",
             this.toolObjects.length, toolSetManager.getActiveToolSetNames(), getAvailableTools());
     }
 
     /**
-     * 过滤出仅包含 @Tool 方法的 Bean，并包装追踪代理。
+     * 检查 Bean 是否包含 @Tool 方法。
      */
-    private Object[] wrapToolsForTracking(List<Object> beans) {
-        return beans.stream()
-            .filter(bean -> {
-                for (Method m : bean.getClass().getDeclaredMethods()) {
-                    if (m.isAnnotationPresent(Tool.class)) return true;
-                }
-                return false;
-            })
+    private boolean hasToolMethods(Object bean) {
+        for (Method m : bean.getClass().getDeclaredMethods()) {
+            if (m.isAnnotationPresent(Tool.class)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 构建全部工具数组：原生 @Tool Bean + MCP FunctionCallback。
+     */
+    private Object[] buildAllTools(List<Object> beans, McpToolProvider mcpToolProvider) {
+        List<Object> allTools = new ArrayList<>();
+
+        // 原生 @Tool Bean（包装追踪代理）
+        List<Object> nativeTools = beans.stream()
+            .filter(this::hasToolMethods)
             .map(toolCallTracker::wrap)
-            .toArray();
+            .toList();
+        allTools.addAll(nativeTools);
+
+        // MCP 工具（来自外部 MCP 服务器）
+        List<ToolCallback> mcpCallbacks = mcpToolProvider.discoverAllTools();
+        allTools.addAll(mcpCallbacks);
+
+        log.info("SimpleAgent: {} native tool(s) + {} MCP tool(s) = {} total",
+            nativeTools.size(), mcpCallbacks.size(), allTools.size());
+
+        return allTools.toArray();
     }
 
     /**
@@ -581,11 +605,16 @@ public class SimpleAgent {
      * 获取所有可用工具名称列表。
      * 通过反射扫描 toolObjects 中带有 @Tool 注解的方法。
      * 对于 CGLIB 代理类，使用其超类（原始工具类）来查找注解。
+     * MCP 工具（FunctionCallback）通过 getName() 提取。
      */
     public List<String> getAvailableTools() {
         List<String> names = new ArrayList<>();
-        for (Object bean : toolObjects) {
-            Class<?> cls = bean.getClass();
+        for (Object obj : toolObjects) {
+            if (obj instanceof ToolCallback callback) {
+                names.add(callback.getToolDefinition().name());
+                continue;
+            }
+            Class<?> cls = obj.getClass();
             // CGLIB 代理的超类是原始工具类
             if (cls.getName().contains("$$")) {
                 cls = cls.getSuperclass();
